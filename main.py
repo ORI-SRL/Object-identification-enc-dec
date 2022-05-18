@@ -27,21 +27,20 @@ class ObjectGraspsDataset(Dataset):
 
         input_data = np.load(data_array_file)
         input_targets = np.load(labels_file)
-        norm_data = input_data/np.linalg.norm(input_data, axis=1)[:, None]
         # reshape data to align sensors
-        X = np.reshape(norm_data, (-1, 1, 10, 19))
+        X = np.reshape(input_data, (-1, 1, 10, 19))
         y = input_targets
         self.root_dir = root_dir
         self.transform = transform
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.1, stratify=y, random_state=1
         )
-
+        norm_factor = np.max(X_train)
         if train:
-            self.data = X_train
+            self.data = X_train/norm_factor
             self.targets = y_train
         else:
-            self.data = X_test
+            self.data = X_test/norm_factor
             self.targets = y_test
 
     def __len__(self):
@@ -96,26 +95,26 @@ class ConvAutoencoder(nn.Module):
         super(ConvAutoencoder, self).__init__()
 
         # Encoder
-        self.conv1 = nn.Conv2d(1, 16, 5, padding=1, dtype=float)
-        self.conv2 = nn.Conv2d(16, 4, 3, padding=1, dtype=float)
+        self.conv1 = nn.Conv2d(1, 16, (1, 19), padding=0, dtype=float)
+        self.conv2 = nn.Conv2d(16, 4, (10, 1), padding=0, dtype=float)
         self.pool = nn.MaxPool2d(2, 2, return_indices=True)
 
         # Decoder
-        self.t_conv1 = nn.ConvTranspose2d(4, 16, 3, padding=1, dtype=float)
-        self.t_conv2 = nn.ConvTranspose2d(16, 1, 5, padding=1, dtype=float)
+        self.t_conv1 = nn.ConvTranspose2d(4, 16, (10, 1), dtype=float)
+        self.t_conv2 = nn.ConvTranspose2d(16, 1, (1, 19), dtype=float)
         self.unpool = nn.MaxUnpool2d(2, 2)
         # self.pad = nn.functional.pad((0, 0, 1, 0))
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
-        x, p1 = self.pool(x)
+        # x, p1 = self.pool(x)
         x = F.relu(self.conv2(x))
-        x, p2 = self.pool(x)
-        x = self.unpool(x, p2)
+        # x, p2 = self.pool(x)
+        # x = self.unpool(x, p2)
         x = F.relu(self.t_conv1(x))
-        x = self.unpool(x, p1)
-        x = F.pad(x, (0, 1), 'constant', 0)
-        x = torch.softmax(self.t_conv2(x), dim=0)
+        # x = self.unpool(x, p1)
+        # x = F.pad(x, (0, 1), 'constant', 0)
+        x = F.relu(self.t_conv2(x))
 
         return x
 
@@ -125,7 +124,7 @@ model = ConvAutoencoder()
 print(model)
 
 # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
-criterion = nn.CrossEntropyLoss()
+criterion = nn.MSELoss()
 
 # Optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -145,11 +144,13 @@ model.to(device)
 
 # Epochs
 n_epochs = 100
-loss_out = []
+train_loss_out = []
+test_loss_out = []
 
 for epoch in range(1, n_epochs + 1):
     # monitor training loss
     train_loss = 0.0
+    test_loss = 0.0
 
     # Training
     for data in train_loader:
@@ -163,11 +164,29 @@ for epoch in range(1, n_epochs + 1):
         train_loss += loss.item() * frame.size(0)
 
     train_loss = train_loss / len(train_loader)
-    loss_out.append(train_loss)
-    print('Epoch: {} \tTraining Loss: {:.6f}'.format(epoch, train_loss))
+    train_loss_out.append(train_loss)
 
+    for data in test_loader:
+        frame = data["data"]
+        frame = frame.to(device)
+        outputs = model(frame)
+        loss2 = criterion(outputs, frame)
+        loss2.backward()
+        test_loss += loss2.item() * frame.size(0)
+
+    test_loss = test_loss / len(test_loader)
+    test_loss_out.append(test_loss)
+    print('Epoch: {} \tTraining Loss: {:.5f} \tTesting loss: {:.5f}'.format(epoch, train_loss, test_loss))
 # not sure where to take this next to evaluate the loss and evaluate the outputs
 torch.save(model.state_dict(), 'final_model_state.pt')
+
+x = np.linspace(1, n_epochs+1, n_epochs)
+plt.plot(x, train_loss_out, label="Training loss")
+plt.plot(x, test_loss_out, label="Testing loss")
+plt.xlabel('epoch #')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
 
 model = ConvAutoencoder(*args, **kwargs)
 model.load_state_dict(torch.load('final_model_state.pt'))
