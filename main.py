@@ -4,13 +4,15 @@ from sklearn.model_selection import train_test_split
 import os
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 import matplotlib.pyplot as plt
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
+from networks import TwoLayerConv
+from networks import TwoLayerWDropout
+from networks import TwoLayerWBatchNorm
 
 class ObjectGraspsDataset(Dataset):
     """Object Grasps Dataset"""
@@ -83,12 +85,6 @@ train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, nu
 test_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, num_workers=0)   # torch.from_numpy(test_data)
 
 
-# Utility functions to un-normalize and display an image
-def imshow(img):
-    img = img / 2 + 0.5
-    plt.imshow(np.transpose(img, (1, 2, 0)))
-
-
 # Define the Convolutional Autoencoder
 class ConvAutoencoder(nn.Module):
     def __init__(self):
@@ -126,76 +122,93 @@ class ConvAutoencoder(nn.Module):
         return x
 
 
+# learn new model or use previously learnt
+learn_model = True
+
+
 # Instantiate the model
-model = ConvAutoencoder()
+model = TwoLayerConv()
 print(model)
+learn_model(model, train_loader, test_loader)
+model = TwoLayerWDropout()
+print(model)
+learn_model(model, train_loader, test_loader)
+model = TwoLayerWBatchNorm()
+print(model)
+learn_model(model, train_loader, test_loader)
 
-# Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
-criterion = nn.MSELoss()
+def learn_model(model, train_loader, test_loader):
+    # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
+    criterion = nn.MSELoss()
 
-# Optimizer
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
-
-def get_device():
-    if torch.cuda.is_available():
-        device = 'cuda:0'
-    else:
-        device = 'cpu'
-    return device
+    # Optimizer
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 
-device = get_device()
-print(device)
-model.to(device)
+    def get_device():
+        if torch.cuda.is_available():
+            device = 'cuda:0'
+        else:
+            device = 'cpu'
+        return device
 
-# Epochs
-n_epochs = 25
-train_loss_out = []
-test_loss_out = []
 
-for epoch in range(1, n_epochs + 1):
-    # monitor training loss
-    train_loss = 0.0
-    test_loss = 0.0
+    device = get_device()
+    print(device)
+    model.to(device)
 
-    # Training
-    for data in train_loader:
-        frame = data["data"]
-        labels = data["labels"]
-        frame = frame.to(device)
-        optimizer.zero_grad()
-        outputs = model(frame)
-        loss = criterion(outputs, frame)
-        loss.backward()
-        optimizer.step()
-        train_loss += loss.item() * frame.size(0)
+    # Epochs
+    n_epochs = 25
+    train_loss_out = []
+    test_loss_out = []
 
-    train_loss = train_loss / len(train_loader)
-    train_loss_out.append(train_loss)
+    for epoch in range(1, n_epochs + 1):
+        # monitor training loss
+        train_loss = 0.0
+        test_loss = 0.0
 
-    for data in test_loader:
-        frame = data["data"]
-        frame = frame.to(device)
-        outputs = model(frame)
-        loss2 = criterion(outputs, frame)
-        loss2.backward()
-        test_loss += loss2.item() * frame.size(0)
+        # Training
+        for data in train_loader:
+            frame = data["data"]
+            labels = data["labels"]
+            frame = frame.to(device)
+            optimizer.zero_grad()
+            outputs = model(frame)
+            loss = criterion(outputs, frame)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item() * frame.size(0)
 
-    test_loss = test_loss / len(test_loader)
-    test_loss_out.append(test_loss)
-    print('Epoch: {} \tTraining Loss: {:.5f} \tTesting loss: {:.5f}'.format(epoch, train_loss, test_loss))
-# not sure where to take this next to evaluate the loss and evaluate the outputs
-torch.save(model.state_dict(), 'final_model_state.pt')
+        train_loss = train_loss / len(train_loader)
+        train_loss_out.append(train_loss)
 
-x = np.linspace(1, n_epochs+1, n_epochs)
-plt.plot(x, train_loss_out, label="Training loss")
-plt.plot(x, test_loss_out, label="Testing loss")
-plt.xlabel('epoch #')
-plt.ylabel('Loss')
-plt.legend()
-plt.show()
+        for data in test_loader:
+            frame = data["data"]
+            frame = frame.to(device)
+            outputs = model(frame)
+            loss2 = criterion(outputs, frame)
+            loss2.backward()
+            test_loss += loss2.item() * frame.size(0)
 
-model = ConvAutoencoder(*args, **kwargs)
+        test_loss = test_loss / len(test_loader)
+        test_loss_out.append(test_loss)
+        if min(test_loss_out) == test_loss:
+            best_params = model.state_dict()
+        elif test_loss_out.index(min(test_loss_out))-epoch == 20:
+            break
+
+        print('Epoch: {} \tTraining Loss: {:.5f} \tTesting loss: {:.5f}'.format(epoch, train_loss, test_loss))
+    # not sure where to take this next to evaluate the loss and evaluate the outputs
+    torch.save(best_params, 'final_model_state.pt')
+
+    # plot model losses
+    x = np.linspace(1, n_epochs + 1, n_epochs)
+    plt.plot(x, train_loss_out, label="Training loss")
+    plt.plot(x, test_loss_out, label="Testing loss")
+    plt.xlabel('epoch #')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.show()
+
 model.load_state_dict(torch.load('final_model_state.pt'))
 model.eval()
