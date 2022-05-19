@@ -33,7 +33,7 @@ class ObjectGraspsDataset(Dataset):
         self.root_dir = root_dir
         self.transform = transform
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.1, stratify=y, random_state=1
+            X, y, test_size=0.1, stratify=y, random_state=20
         )
         norm_factor = np.max(X_train)
         if train:
@@ -51,7 +51,7 @@ class ObjectGraspsDataset(Dataset):
             idx = idx.tolist()
         obj_name = self.targets[idx]
         data_line = self.data[idx, :]
-        sample = {'image': obj_name, 'data': data_line}
+        sample = {'labels': obj_name, 'data': data_line}
 
         # if self.transform:
         #     sample = self.transform(sample)
@@ -95,18 +95,25 @@ class ConvAutoencoder(nn.Module):
         super(ConvAutoencoder, self).__init__()
 
         # Encoder
-        self.conv1 = nn.Conv2d(1, 16, (1, 19), padding=0, dtype=float)
-        self.conv2 = nn.Conv2d(16, 4, (10, 1), padding=0, dtype=float)
-        self.pool = nn.MaxPool2d(2, 2, return_indices=True)
-
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 16, (1, 19), padding=0, dtype=float),
+            nn.ReLU(True),
+            nn.Conv2d(16, 4, (10, 1), padding=0, dtype=float),
+            nn.ReLU(True),
+            )
         # Decoder
-        self.t_conv1 = nn.ConvTranspose2d(4, 16, (10, 1), dtype=float)
-        self.t_conv2 = nn.ConvTranspose2d(16, 1, (1, 19), dtype=float)
-        self.unpool = nn.MaxUnpool2d(2, 2)
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(4, 16, (10, 1), dtype=float),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(16, 1, (1, 19), dtype=float),
+            nn.ReLU(True)
+            )
         # self.pad = nn.functional.pad((0, 0, 1, 0))
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
+        x = self.encoder(x)
+        x = self.decoder(x)
+        ''' x = F.relu(self.conv1(x))
         # x, p1 = self.pool(x)
         x = F.relu(self.conv2(x))
         # x, p2 = self.pool(x)
@@ -114,7 +121,7 @@ class ConvAutoencoder(nn.Module):
         x = F.relu(self.t_conv1(x))
         # x = self.unpool(x, p1)
         # x = F.pad(x, (0, 1), 'constant', 0)
-        x = F.relu(self.t_conv2(x))
+        x = F.relu(self.t_conv2(x)) '''
 
         return x
 
@@ -143,7 +150,7 @@ print(device)
 model.to(device)
 
 # Epochs
-n_epochs = 100
+n_epochs = 25
 train_loss_out = []
 test_loss_out = []
 
@@ -155,6 +162,7 @@ for epoch in range(1, n_epochs + 1):
     # Training
     for data in train_loader:
         frame = data["data"]
+        labels = data["labels"]
         frame = frame.to(device)
         optimizer.zero_grad()
         outputs = model(frame)
