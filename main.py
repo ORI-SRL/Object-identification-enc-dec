@@ -122,22 +122,9 @@ class ConvAutoencoder(nn.Module):
         return x
 
 
-# learn new model or use previously learnt
-learn_model = True
-
-
-# Instantiate the model
-model = TwoLayerConv()
-print(model)
-learn_model(model, train_loader, test_loader)
-model = TwoLayerWDropout()
-print(model)
-learn_model(model, train_loader, test_loader)
-model = TwoLayerWBatchNorm()
-print(model)
-learn_model(model, train_loader, test_loader)
-
 def learn_model(model, train_loader, test_loader):
+    model_name = model.__class__.__name__
+    print(model_name)
     # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
     criterion = nn.MSELoss()
 
@@ -158,7 +145,7 @@ def learn_model(model, train_loader, test_loader):
     model.to(device)
 
     # Epochs
-    n_epochs = 25
+    n_epochs = 50
     train_loss_out = []
     test_loss_out = []
 
@@ -171,6 +158,8 @@ def learn_model(model, train_loader, test_loader):
         for data in train_loader:
             frame = data["data"]
             labels = data["labels"]
+            if frame.size(0)<16:
+                break
             frame = frame.to(device)
             optimizer.zero_grad()
             outputs = model(frame)
@@ -198,17 +187,34 @@ def learn_model(model, train_loader, test_loader):
             break
 
         print('Epoch: {} \tTraining Loss: {:.5f} \tTesting loss: {:.5f}'.format(epoch, train_loss, test_loss))
-    # not sure where to take this next to evaluate the loss and evaluate the outputs
-    torch.save(best_params, 'final_model_state.pt')
+    model_file = model_name+'_model_state.pt'
+    torch.save(best_params, model_file)
 
     # plot model losses
     x = np.linspace(1, n_epochs + 1, n_epochs)
-    plt.plot(x, train_loss_out, label="Training loss")
-    plt.plot(x, test_loss_out, label="Testing loss")
+    plt.plot(x, train_loss_out, label=model_name+"Training loss")
+    plt.plot(x, test_loss_out, label=model_name+"Testing loss")
     plt.xlabel('epoch #')
     plt.ylabel('Loss')
     plt.legend()
     plt.show()
 
-model.load_state_dict(torch.load('final_model_state.pt'))
-model.eval()
+    return best_params, min(test_loss_out)
+
+
+# Instantiate the model
+model = TwoLayerWBatchNorm()
+print(model)
+batch_params, batch_loss = learn_model(model, train_loader, test_loader)
+model = TwoLayerConv()
+print(model)
+conv_params, conv_loss = learn_model(model, train_loader, test_loader)
+model = TwoLayerWDropout()
+print(model)
+dropout_params, dropout_loss = learn_model(model, train_loader, test_loader)
+
+
+#model.load_state_dict(torch.load('final_model_state.pt'))
+#model.eval()
+
+print('finished')
