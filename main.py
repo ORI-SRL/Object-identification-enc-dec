@@ -45,7 +45,7 @@ for ModelArchitecture in models:
     print(model)
 
     batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
-                                             n_epochs=50,
+                                             n_epochs=150,
                                              max_patience=20,
                                              save_folder=MODEL_SAVE_FOLDER,
                                              save=True,
