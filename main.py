@@ -1,17 +1,19 @@
 import torch.nn as nn
 import torch
 import matplotlib.pyplot as plt
-from utils.pytorch_helpers import learn_model, seed_experiment
+import os
+from utils.pytorch_helpers import learn_model, test_model, seed_experiment
 from utils.data_handlers import ObjectGraspsDataset
 from torch.utils.data import DataLoader
 from utils.networks import TwoLayerConv
 from utils.networks import TwoLayerWDropout
 from utils.networks import TwoLayerWBatchNorm
 
+DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/'
 
-# luca: seeding the experiment is useful to get reproduceble results
+# luca: seeding the experiment is useful to get reproduceable results
 seed_experiment(123)
 
 # load grasp dataset into train and test
@@ -33,25 +35,31 @@ test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0)   # to
 models = [TwoLayerConv, TwoLayerWBatchNorm, TwoLayerWDropout]
 loss_comparison_dict = {}
 
-for ModelArchitecture in models:
-    model = ModelArchitecture()
-    print(f'Total params: {(sum(p.numel() for p in model.parameters()) / 1000000.0):.2f}M')
+TRAIN_MODEL = False
+if TRAIN_MODEL:
+    for ModelArchitecture in models:
+        model = ModelArchitecture()
+        print(f'Total params: {(sum(p.numel() for p in model.parameters()) / 1000000.0):.2f}M')
 
-    # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
-    criterion = nn.MSELoss()
-    # Optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
+        criterion = nn.MSELoss()
+        # Optimizer
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    print(model)
+        print(model)
 
-    batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
-                                             n_epochs=150,
-                                             max_patience=20,
-                                             save_folder=MODEL_SAVE_FOLDER,
-                                             save=True,
-                                             show=True)
+        batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
+                                                 n_epochs=150,
+                                                 max_patience=20,
+                                                 save_folder=MODEL_SAVE_FOLDER,
+                                                 save=True,
+                                                 show=True)
 
-    loss_comparison_dict[model.__class__.__name__] = batch_losses
+        loss_comparison_dict[model.__class__.__name__] = batch_losses
+else:
+    for ModelStates in os.listdir('./saved_model_states'):
+        model = torch.load(DATA_PATH)
+        encoded_data = test_model(model, train_loader, test_loader)
 
 
 # plot stuff to choose model

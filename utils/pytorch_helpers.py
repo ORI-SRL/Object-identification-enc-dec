@@ -81,7 +81,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
             patience += 1
             if patience >= max_patience:
                 print(f'Early stopping: training terminated at epoch {epoch} due to es, '
-                      f'patience exceded at {max_patience}')
+                      f'patience exceeded at {max_patience}')
                 break
 
         # luca: we observe loss*1e3 just for convenience. the loss scaling isn't necessary above
@@ -102,3 +102,31 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
         plt.show()
 
     return best_params, test_loss_out
+
+
+def test_model(model, train_loader, test_loader, save_folder='./', save=True, show=True):
+    model_name = model.__class__.__name__
+    print(model_name)
+
+    device = get_device()
+    print(device)
+    model.to(device)
+
+    model.eval()
+    for data in test_loader:
+        frame = data["data"].to(device)
+        outputs, embeddings = model(frame)
+
+    if save:
+        model_file = f'{save_folder}{model_name}_model_state.pt'
+        torch.save(embeddings, model_file)
+
+    if show:
+        # plot model losses
+        x = embeddings[:, 0]
+        y = embeddings[:, 1]
+        plt.plot(x, y, label=model_name+"_encoded_data")
+        plt.xlabel('Component 1')
+        plt.ylabel('Component 2')
+        plt.legend()
+        plt.show()
