@@ -29,8 +29,8 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 
 # Prepare data loaders
 batch_size = 128
-train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=0)   # torch.from_numpy(train_data)
-test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0)   # torch.from_numpy(test_data)
+train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(train_data)
+test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(test_data)
 
 models = [TwoLayerConv, TwoLayerWBatchNorm, TwoLayerWDropout]
 loss_comparison_dict = {}
@@ -57,14 +57,13 @@ if TRAIN_MODEL:
 
         loss_comparison_dict[model.__class__.__name__] = batch_losses
 else:
-    for ModelArchitecture in models:
-        # os.listdir('./saved_model_states'):
-        model = ModelArchitecture()
-        model_state = f'./saved_model_states/{model.__class__.__name__}_model_state.pt'
-        model.load_state_dict(torch.load(model_state))
-        model.eval()
-        encoded_data = test_model(model, train_loader, test_loader)
-
+    # for ModelArchitecture in models:
+    # os.listdir('./saved_model_states'):
+    model = TwoLayerWDropout()  # ModelArchitecture()
+    model_state = f'./saved_model_states/{model.__class__.__name__}_model_state.pt'
+    model.load_state_dict(torch.load(model_state))
+    model.eval()
+    encoded_data = test_model(model, train_loader, test_loader, classes)
 
 # plot stuff to choose model
 
@@ -80,7 +79,7 @@ plt.ylabel('test loss')
 plt.legend()
 plt.show()
 
-#model.load_state_dict(torch.load('final_model_state.pt'))
-#model.eval()
+# model.load_state_dict(torch.load('final_model_state.pt'))
+# model.eval()
 
 print('finished')

@@ -104,19 +104,22 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
     return best_params, test_loss_out
 
 
-def test_model(model, train_loader, test_loader, save_folder='./', save=True, show=True):
+def test_model(model, train_loader, test_loader, classes, save_folder='./', save=False, show=True):
     model_name = model.__class__.__name__
     print(model_name)
 
     device = get_device()
     print(device)
     model.to(device)
+    encoded_points_out = torch.FloatTensor()
+    labels_out = []
 
     model.eval()
-    for data in test_loader:
+    for data in train_loader:
         frame = data["data"].to(device)
-        outputs, embeddings = model(frame)
-
+        _, embeddings = model(frame)
+        encoded_points_out = torch.cat((encoded_points_out, embeddings.cpu()), 0)
+        labels_out.extend(data["labels"])
 
     if save:
         model_file = f'{save_folder}{model_name}_model_state.pt'
@@ -125,11 +128,16 @@ def test_model(model, train_loader, test_loader, save_folder='./', save=True, sh
     if show:
         # plot encoded data
         torch.Tensor.ndim = property(lambda self: len(self.shape))
-        x = embeddings[:, 0].cpu()
-        y = embeddings[:, 1].cpu()
+        x = encoded_points_out[:, 0].cpu()
+        y = encoded_points_out[:, 1].cpu()
         x = x.detach().numpy()
         y = y.detach().numpy()
-        plt.scatter(x, y, label=model_name+"_encoded_data")
+        for label in classes:
+            label_indices = []
+            for idx in range(len(labels_out)):
+                if labels_out[idx] == label:
+                    label_indices.append(idx)
+            plt.scatter(x[label_indices], y[label_indices], label=label)
         plt.xlabel('Component 1')
         plt.ylabel('Component 2')
         plt.legend()
