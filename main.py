@@ -24,7 +24,7 @@ test_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_data_11_03_22.npy',
                                 f'{DATA_FOLDER}labels_data_11_03_22.npy',
                                 train=False)
 
-# Define the image classes
+# Define the object classes
 classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 
 # Prepare data loaders
@@ -57,8 +57,12 @@ if TRAIN_MODEL:
 
         loss_comparison_dict[model.__class__.__name__] = batch_losses
 else:
-    for ModelStates in os.listdir('./saved_model_states'):
-        model = torch.load(DATA_PATH)
+    for ModelArchitecture in models:
+        # os.listdir('./saved_model_states'):
+        model = ModelArchitecture()
+        model_state = f'./saved_model_states/{model.__class__.__name__}_model_state.pt'
+        model.load_state_dict(torch.load(model_state))
+        model.eval()
         encoded_data = test_model(model, train_loader, test_loader)
 
 

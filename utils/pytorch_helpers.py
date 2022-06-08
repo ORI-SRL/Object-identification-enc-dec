@@ -117,15 +117,19 @@ def test_model(model, train_loader, test_loader, save_folder='./', save=True, sh
         frame = data["data"].to(device)
         outputs, embeddings = model(frame)
 
+
     if save:
         model_file = f'{save_folder}{model_name}_model_state.pt'
         torch.save(embeddings, model_file)
 
     if show:
-        # plot model losses
-        x = embeddings[:, 0]
-        y = embeddings[:, 1]
-        plt.plot(x, y, label=model_name+"_encoded_data")
+        # plot encoded data
+        torch.Tensor.ndim = property(lambda self: len(self.shape))
+        x = embeddings[:, 0].cpu()
+        y = embeddings[:, 1].cpu()
+        x = x.detach().numpy()
+        y = y.detach().numpy()
+        plt.scatter(x, y, label=model_name+"_encoded_data")
         plt.xlabel('Component 1')
         plt.ylabel('Component 2')
         plt.legend()
