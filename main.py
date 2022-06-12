@@ -49,13 +49,28 @@ if TRAIN_MODEL:
         print(model)
 
         batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
-                                                 n_epochs=150,
-                                                 max_patience=20,
+                                                 n_epochs=1500,
+                                                 max_patience=100,
                                                  save_folder=MODEL_SAVE_FOLDER,
                                                  save=True,
                                                  show=True)
 
         loss_comparison_dict[model.__class__.__name__] = batch_losses
+
+    # plot stuff to choose model
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    plt.title('Model Comparison')
+
+    for key in loss_comparison_dict.keys():
+        plt.plot(loss_comparison_dict[key], label=key)
+
+    plt.xlabel('epochs')
+    plt.ylabel('test loss')
+    plt.legend()
+    plt.show()
+
 else:
     # for ModelArchitecture in models:
     # os.listdir('./saved_model_states'):
@@ -64,20 +79,6 @@ else:
     model.load_state_dict(torch.load(model_state))
     model.eval()
     encoded_data = test_model(model, train_loader, test_loader, classes)
-
-# plot stuff to choose model
-
-fig = plt.figure()
-ax = fig.add_subplot(111)
-plt.title('Model Comparison')
-
-for key in loss_comparison_dict.keys():
-    plt.plot(loss_comparison_dict[key], label=key)
-
-plt.xlabel('epochs')
-plt.ylabel('test loss')
-plt.legend()
-plt.show()
 
 # model.load_state_dict(torch.load('final_model_state.pt'))
 # model.eval()

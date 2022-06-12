@@ -3,6 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import copy
 import random
+from sklearn.metrics import silhouette_score
 
 
 def seed_experiment(seed):
@@ -35,6 +36,8 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
     # Epochs
     train_loss_out = []
     test_loss_out = []
+    train_sil_out = []
+
 
     patience = 0
     best_loss = None
@@ -43,22 +46,29 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
         # monitor training loss
         train_loss = 0.0
         test_loss = 0.0
+        train_sil = 0.0
 
         # Training
         model.train()
         for data in train_loader:
             frame = data["data"].to(device)
-            # labels = data["labels"]
+            frame_labels = data["labels"]
 
             optimizer.zero_grad()
             outputs, embeddings = model(frame)
             loss = criterion(outputs, frame)
+            silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels)
+            silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1 + 1
+            loss = (loss + 0.01*silhouette_avg)/2
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+            train_sil += silhouette_avg
 
         train_loss = train_loss / len(train_loader)
         train_loss_out.append(train_loss)
+        train_sil = train_sil / len(train_loader)
+        train_sil_out.append(train_sil)
 
         model.eval()
         for data in test_loader:
@@ -73,8 +83,8 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
         test_loss_out.append(test_loss)
 
         # EARLY STOPPING LOGIC
-        if best_loss is None or test_loss < best_loss:
-            best_loss = test_loss
+        if best_loss is None or train_loss < best_loss:
+            best_loss = train_loss
             patience = 0
             best_params = copy.copy(model.state_dict())
         else:
@@ -85,7 +95,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
                 break
 
         # luca: we observe loss*1e3 just for convenience. the loss scaling isn't necessary above
-        print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f}'.format(epoch, train_loss*1e3, test_loss*1e3))
+        print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tSilhouette score: {:.3f}'.format(epoch, train_loss*1e3, test_loss*1e3, train_sil))
 
     if save and best_params is not None:
         model_file = f'{save_folder}{model_name}_model_state.pt'

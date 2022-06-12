@@ -34,7 +34,7 @@ class TwoLayerConv(nn.Module):
 
     def forward(self, x):
         x_enc = self.encoder_conv(x)
-        x_enc = self.encoder_ff(x_enc) # here x_enc is the encoded two dimensional vector and can be investigated
+        x_enc = self.encoder_ff(x_enc)  # here x_enc is the encoded two-dimensional vector and can be investigated
 
         x_dec = self.decoder(x_enc.unsqueeze(1).unsqueeze(1))
 
@@ -77,7 +77,7 @@ class TwoLayerWDropout(nn.Module):
 
     def forward(self, x):
         x_enc = self.encoder_conv(x)
-        x_enc = self.encoder_ff(x_enc) # here x_enc is the encoded two dimensional vector and can be investigated
+        x_enc = self.encoder_ff(x_enc)  # here x_enc is the encoded two-dimensional vector and can be investigated
 
         x_dec = self.decoder(x_enc.unsqueeze(1).unsqueeze(1))
 
@@ -121,7 +121,7 @@ class TwoLayerWBatchNorm(nn.Module):
 
     def forward(self, x):
         x_enc = self.encoder_conv(x)
-        x_enc = self.encoder_ff(x_enc) # here x_enc is the encoded two dimensional vector and can be investigated
+        x_enc = self.encoder_ff(x_enc)  # here x_enc is the encoded two-dimensional vector and can be investigated
 
         x_dec = self.decoder(x_enc.unsqueeze(1).unsqueeze(1))
 
