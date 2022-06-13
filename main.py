@@ -78,7 +78,7 @@ else:
     model_state = f'./saved_model_states/{model.__class__.__name__}_model_state.pt'
     model.load_state_dict(torch.load(model_state))
     model.eval()
-    encoded_data = test_model(model, train_loader, test_loader, classes)
+    X, y = test_model(model, train_loader, test_loader, classes)
 
 # model.load_state_dict(torch.load('final_model_state.pt'))
 # model.eval()

@@ -38,7 +38,6 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
     test_loss_out = []
     train_sil_out = []
 
-
     patience = 0
     best_loss = None
     best_params = None
@@ -59,7 +58,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
             loss = criterion(outputs, frame)
             silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels)
             silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1 + 1
-            loss = (loss + 0.01*silhouette_avg)/2
+            loss = (loss + 0.02 * silhouette_avg) / 2
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -73,9 +72,12 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
         model.eval()
         for data in test_loader:
             frame = data["data"].to(device)
-
+            frame_labels = data["labels"]
             outputs, embeddings = model(frame)
+            silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels)
+            silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1 + 1
             loss2 = criterion(outputs, frame)
+            loss2 = (loss2 + 0.02 * silhouette_avg) / 2
             loss2.backward()
             test_loss += loss2.item()
 
@@ -95,7 +97,8 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
                 break
 
         # luca: we observe loss*1e3 just for convenience. the loss scaling isn't necessary above
-        print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tSilhouette score: {:.3f}'.format(epoch, train_loss*1e3, test_loss*1e3, train_sil))
+        print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tSilhouette score: {:.3f}'
+              .format(epoch, train_loss * 1e3, test_loss * 1e3, train_sil))
 
     if save and best_params is not None:
         model_file = f'{save_folder}{model_name}_model_state.pt'
@@ -104,8 +107,8 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
     if show:
         # plot model losses
         x = list(range(1, len(test_loss_out) + 1))
-        plt.plot(x, train_loss_out, label=model_name+"Training loss")
-        plt.plot(x, test_loss_out, label=model_name+"Testing loss")
+        plt.plot(x, train_loss_out, label=model_name + "Training loss")
+        plt.plot(x, test_loss_out, label=model_name + "Testing loss")
         plt.xlabel('epoch #')
         plt.ylabel('Loss')
         plt.legend()
@@ -142,13 +145,21 @@ def test_model(model, train_loader, test_loader, classes, save_folder='./', save
         y = encoded_points_out[:, 1].cpu()
         x = x.detach().numpy()
         y = y.detach().numpy()
+        if encoded_points_out.shape[1] == 3:
+            z = encoded_points_out[:, 2].cpu()
+            z = z.detach().numpy()
         for label in classes:
             label_indices = []
             for idx in range(len(labels_out)):
                 if labels_out[idx] == label:
                     label_indices.append(idx)
-            plt.scatter(x[label_indices], y[label_indices], label=label)
+            if encoded_points_out.shape[1] == 2:
+                plt.scatter(x[label_indices], y[label_indices], label=label)
+            elif encoded_points_out[1] == 3:
+                plt.scatter(x[label_indices], y[label_indices], z[label_indices], label=label)
         plt.xlabel('Component 1')
         plt.ylabel('Component 2')
         plt.legend()
         plt.show()
+
+        return encoded_points_out, labels_out
