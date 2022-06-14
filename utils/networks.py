@@ -62,14 +62,14 @@ class TwoLayerWDropout(nn.Module):
         x = self.encoder_conv(torch.zeros((1, 1, 10, 19)))
         self.encoder_ff = nn.Sequential(nn.Linear(x.shape[-1], 100),
                                         nn.Tanh(),
-                                        nn.Linear(100, 2))   # luca: squeeze the bottleneck to two neurons
+                                        nn.Linear(100, 3))   # luca: squeeze the bottleneck to two neurons
 
         # Decoder
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(1, 32, (10, 2)),
             nn.Dropout2d(.2),
             nn.ReLU(),
-            nn.ConvTranspose2d(32, 64, (1, 8)),
+            nn.ConvTranspose2d(32, 64, (1, 7)),
             nn.Dropout2d(.2),
             nn.ReLU(),
             nn.ConvTranspose2d(64, 1, (1, 10)),
@@ -106,14 +106,14 @@ class TwoLayerWBatchNorm(nn.Module):
         x = self.encoder_conv(torch.zeros((1, 1, 10, 19)))
         self.encoder_ff = nn.Sequential(nn.Linear(x.shape[-1], 100),
                                         nn.Tanh(),
-                                        nn.Linear(100, 2))   # luca: squeeze the bottleneck to two neurons
+                                        nn.Linear(100, 3))   # luca: squeeze the bottleneck to two neurons
 
         # Decoder
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(1, 32, (10, 2)),
             nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.ConvTranspose2d(32, 64, (1, 8)),
+            nn.ConvTranspose2d(32, 64, (1, 7)),
             nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.ConvTranspose2d(64, 1, (1, 10)),

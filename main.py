@@ -32,7 +32,7 @@ batch_size = 128
 train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(train_data)
 test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(test_data)
 
-models = [TwoLayerConv, TwoLayerWBatchNorm, TwoLayerWDropout]
+models = [TwoLayerWDropout]  # TwoLayerConv, TwoLayerWBatchNorm,
 loss_comparison_dict = {}
 
 TRAIN_MODEL = False
@@ -44,13 +44,13 @@ if TRAIN_MODEL:
         # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
         criterion = nn.MSELoss()
         # Optimizer
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(model.parameters(), lr=7.5e-4)
 
         print(model)
 
         batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
-                                                 n_epochs=1500,
-                                                 max_patience=100,
+                                                 n_epochs=3000,
+                                                 max_patience=1000,
                                                  save_folder=MODEL_SAVE_FOLDER,
                                                  save=True,
                                                  show=True)
@@ -74,11 +74,11 @@ if TRAIN_MODEL:
 else:
     # for ModelArchitecture in models:
     # os.listdir('./saved_model_states'):
-    model = TwoLayerWDropout()  # ModelArchitecture()
+    model = TwoLayerConv()  # ModelArchitecture()
     model_state = f'./saved_model_states/{model.__class__.__name__}_model_state.pt'
     model.load_state_dict(torch.load(model_state))
     model.eval()
-    X, y = test_model(model, train_loader, test_loader, classes)
+    X, y = test_model(model, train_loader, test_loader, classes, compare=True)
 
 # model.load_state_dict(torch.load('final_model_state.pt'))
 # model.eval()

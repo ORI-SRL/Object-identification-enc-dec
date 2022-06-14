@@ -3,7 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import copy
 import random
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, silhouette_samples
 
 
 def seed_experiment(seed):
@@ -56,8 +56,9 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
             optimizer.zero_grad()
             outputs, embeddings = model(frame)
             loss = criterion(outputs, frame)
+            # calculate the silhouette score at the bottleneck and add it to the loss value
             silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels)
-            silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1 + 1
+            silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
             loss = (loss + 0.02 * silhouette_avg) / 2
             loss.backward()
             optimizer.step()
@@ -71,11 +72,13 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
 
         model.eval()
         for data in test_loader:
+            # take the next frame from the data_loader and process it through the model
             frame = data["data"].to(device)
             frame_labels = data["labels"]
             outputs, embeddings = model(frame)
+            # calculate the silhouette score at the bottleneck and add it to the loss value
             silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels)
-            silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1 + 1
+            silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
             loss2 = criterion(outputs, frame)
             loss2 = (loss2 + 0.02 * silhouette_avg) / 2
             loss2.backward()
@@ -97,8 +100,8 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
                 break
 
         # luca: we observe loss*1e3 just for convenience. the loss scaling isn't necessary above
-        print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tSilhouette score: {:.3f}'
-              .format(epoch, train_loss * 1e3, test_loss * 1e3, train_sil))
+        print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tSilhouette score: {:.4f}'
+              .format(epoch, train_loss * 1e3, test_loss * 1e3, train_sil*-1))
 
     if save and best_params is not None:
         model_file = f'{save_folder}{model_name}_model_state.pt'
@@ -117,7 +120,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
     return best_params, test_loss_out
 
 
-def test_model(model, train_loader, test_loader, classes, save_folder='./', save=False, show=True):
+def test_model(model, train_loader, test_loader, classes, save_folder='./', save=False, show=True, compare=False):
     model_name = model.__class__.__name__
     print(model_name)
 
@@ -126,13 +129,38 @@ def test_model(model, train_loader, test_loader, classes, save_folder='./', save
     model.to(device)
     encoded_points_out = torch.FloatTensor()
     labels_out = []
-
     model.eval()
+
+    if compare:
+        plt.figure()
+        rows = 10
+        columns = 2
+        nPlots = int(rows*columns)
+        plt.suptitle("Comparison of input and output data from model")
+        grid = plt.GridSpec(rows, columns, wspace=0.25, hspace=1)
+        plt.show()
+
     for data in train_loader:
         frame = data["data"].to(device)
-        _, embeddings = model(frame)
+        labels = data["labels"]
+        outputs, embeddings = model(frame)
         encoded_points_out = torch.cat((encoded_points_out, embeddings.cpu()), 0)
-        labels_out.extend(data["labels"])
+        labels_out.extend(labels)
+        if compare:
+            yMax = torch.max(outputs, frame).max()
+            yMax = yMax.cpu().detach().numpy()
+            for i in range(int(nPlots/2)):
+                ticks = np.linspace(1, 19, 19)
+                exec(f"plt.subplot(grid{[2 * i]})")
+                plt.cla()
+                plt.bar(ticks, frame.cpu()[0, 0, i, :])
+                plt.ylim((0, yMax))
+                plt.title(labels[i])
+                exec(f"plt.subplot(grid{[2 * i +1]})")
+                plt.cla()
+                plt.bar(ticks, outputs.cpu().detach().numpy()[0, 0, i, :])
+                plt.ylim((0, yMax))
+                plt.title(labels[i])
 
     if save:
         model_file = f'{save_folder}{model_name}_model_state.pt'
@@ -148,6 +176,7 @@ def test_model(model, train_loader, test_loader, classes, save_folder='./', save
         if encoded_points_out.shape[1] == 3:
             z = encoded_points_out[:, 2].cpu()
             z = z.detach().numpy()
+            # plt.axes(projection='3d')
         for label in classes:
             label_indices = []
             for idx in range(len(labels_out)):
@@ -155,8 +184,9 @@ def test_model(model, train_loader, test_loader, classes, save_folder='./', save
                     label_indices.append(idx)
             if encoded_points_out.shape[1] == 2:
                 plt.scatter(x[label_indices], y[label_indices], label=label)
-            elif encoded_points_out[1] == 3:
+            elif encoded_points_out.shape[1] == 3:
                 plt.scatter(x[label_indices], y[label_indices], z[label_indices], label=label)
+
         plt.xlabel('Component 1')
         plt.ylabel('Component 2')
         plt.legend()
