@@ -28,14 +28,14 @@ test_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_data_11_03_22.npy',
 classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 
 # Prepare data loaders
-batch_size = 128
+batch_size = 42
 train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(train_data)
 test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(test_data)
 
-models = [TwoLayerWDropout]  # TwoLayerConv, TwoLayerWBatchNorm,
+models = [TwoLayerConv, TwoLayerWBatchNorm, TwoLayerWDropout]  #
 loss_comparison_dict = {}
 
-TRAIN_MODEL = False
+TRAIN_MODEL = True
 if TRAIN_MODEL:
     for ModelArchitecture in models:
         model = ModelArchitecture()
@@ -50,7 +50,7 @@ if TRAIN_MODEL:
 
         batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
                                                  n_epochs=3000,
-                                                 max_patience=1000,
+                                                 max_patience=500,
                                                  save_folder=MODEL_SAVE_FOLDER,
                                                  save=True,
                                                  show=True)
@@ -74,11 +74,11 @@ if TRAIN_MODEL:
 else:
     # for ModelArchitecture in models:
     # os.listdir('./saved_model_states'):
-    model = TwoLayerConv()  # ModelArchitecture()
+    model = TwoLayerWDropout()  # ModelArchitecture()
     model_state = f'./saved_model_states/{model.__class__.__name__}_model_state.pt'
     model.load_state_dict(torch.load(model_state))
     model.eval()
-    X, y = test_model(model, train_loader, test_loader, classes, compare=True)
+    X, y = test_model(model, train_loader, test_loader, classes, compare=False)
 
 # model.load_state_dict(torch.load('final_model_state.pt'))
 # model.eval()
