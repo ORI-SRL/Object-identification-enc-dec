@@ -32,7 +32,7 @@ batch_size = 42
 train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(train_data)
 test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(test_data)
 
-models = [TwoLayerConv, TwoLayerWBatchNorm, TwoLayerWDropout]  #
+models = [TwoLayerWBatchNorm, TwoLayerConv, TwoLayerWDropout]  #
 loss_comparison_dict = {}
 
 TRAIN_MODEL = True

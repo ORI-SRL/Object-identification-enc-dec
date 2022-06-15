@@ -89,7 +89,10 @@ class silhouette():
     @staticmethod
     def _intra_cluster_distances_block_(subX):
         distances = torch.cdist(subX, subX)
-        return distances.sum(axis=1) / (distances.shape[0] - 1)
+        if torch.numel(distances) == 1:
+            return distances
+        else:
+            return distances.sum(axis=1) / (distances.shape[0] - 1)
 
     @staticmethod
     def _nearest_cluster_distance_block(X, labels, unique_labels):
