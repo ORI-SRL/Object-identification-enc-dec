@@ -61,7 +61,7 @@ class silhouette():
         if loss:
             return - mean_sil_score
         else:
-            return float(mean_sil_score.cpu().numpy())
+            return float(mean_sil_score.cpu().detach().numpy())
 
     @staticmethod
     def _intra_cluster_distances_block(X, labels, unique_labels):

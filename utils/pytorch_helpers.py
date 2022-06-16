@@ -74,7 +74,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
             silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
             # silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels_num)
             # silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
-            loss = (loss + -1 * 0.01 * silhouette_avg)
+            loss = (loss + 0.01 * silhouette_avg)
 
             loss.backward()  # loss +
             optimizer.step()
@@ -103,7 +103,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
             # silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
             silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
             loss2 = criterion(outputs, frame)
-            loss2 = (loss2 + -1 * 0.01 * silhouette_avg)  # loss2 + 0.02 *
+            loss2 = (loss2 + 0.01 * silhouette_avg)  # loss2 + 0.02 *
             test_loss += loss2.item()
 
         test_loss = test_loss / len(test_loader)
@@ -207,6 +207,13 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
             elif encoded_points_out.shape[1] == 3:
                 ax.scatter3D(x[label_indices], y[label_indices], z[label_indices], label=label, s=2)
                 ax.set_zlabel('Component 3')
+
+        # present overall silhouette score
+        # convert frame_labels to numeric and allocate to tensor to silhouette score
+        le = preprocessing.LabelEncoder()
+        frame_labels_num = le.fit_transform(labels_out)
+        silhouette_avg = silhouette.silhouette.score(encoded_points_out, torch.as_tensor(frame_labels_num), loss=False)
+        print(f"Silhouette score: {silhouette_avg}")
 
         plt.xlabel('Component 1')
         plt.ylabel('Component 2')

@@ -32,10 +32,10 @@ batch_size = 42
 train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(train_data)
 test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(test_data)
 
-models = [TwoLayerWBatchNorm, TwoLayerConv, TwoLayerWDropout]  #
+models = [TwoLayerConv, TwoLayerWBatchNorm, TwoLayerWDropout]  #
 loss_comparison_dict = {}
 
-TRAIN_MODEL = True
+TRAIN_MODEL = False
 if TRAIN_MODEL:
     for ModelArchitecture in models:
         model = ModelArchitecture()
@@ -49,8 +49,8 @@ if TRAIN_MODEL:
         print(model)
 
         batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
-                                                 n_epochs=3000,
-                                                 max_patience=500,
+                                                 n_epochs=500,
+                                                 max_patience=50,
                                                  save_folder=MODEL_SAVE_FOLDER,
                                                  save=True,
                                                  show=True)
@@ -74,11 +74,11 @@ if TRAIN_MODEL:
 else:
     # for ModelArchitecture in models:
     # os.listdir('./saved_model_states'):
-    model = TwoLayerWDropout()  # ModelArchitecture()
+    model = TwoLayerConv()  # ModelArchitecture()
     model_state = f'./saved_model_states/{model.__class__.__name__}_model_state.pt'
     model.load_state_dict(torch.load(model_state))
     model.eval()
-    X, y = test_model(model, train_loader, test_loader, classes, compare=False)
+    X, y = test_model(model, train_loader, test_loader, classes, compare=True)
 
 # model.load_state_dict(torch.load('final_model_state.pt'))
 # model.eval()
