@@ -2,12 +2,14 @@ import torch.nn as nn
 import torch
 import matplotlib.pyplot as plt
 import os
+import pickle
 from utils.pytorch_helpers import learn_model, test_model, seed_experiment
 from utils.data_handlers import ObjectGraspsDataset
 from torch.utils.data import DataLoader
 from utils.networks import TwoLayerConv
 from utils.networks import TwoLayerWDropout
 from utils.networks import TwoLayerWBatchNorm
+from utils.ml_classifiers import svm_classifier, knn_classifier, tree_searches, compare_classifiers
 
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
@@ -78,7 +80,18 @@ else:
     model_state = f'./saved_model_states/{model.__class__.__name__}_model_state.pt'
     model.load_state_dict(torch.load(model_state))
     model.eval()
-    X, y = test_model(model, train_loader, test_loader, classes, compare=True)
+    train_data, train_labels, test_data, test_labels = test_model(
+        model, train_loader, test_loader, classes, compare=False)
+
+    svm_params = svm_classifier(train_data.detach().numpy(), train_labels,
+                                test_data.detach().numpy(), test_labels, learn=True)
+    knn_params = knn_classifier(train_data.detach().numpy(), train_labels,
+                                test_data.detach().numpy(), test_labels, learn=True)
+    tree_params = tree_searches(train_data.detach().numpy(), train_labels,
+                                test_data.detach().numpy(), test_labels, learn=True)
+
+    save_folder = './saved_model_states/ml_states/'
+    pickle.dump(knn_params, open(f'{save_folder}knn_params', 'wb'))
 
 # model.load_state_dict(torch.load('final_model_state.pt'))
 # model.eval()

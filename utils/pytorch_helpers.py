@@ -110,7 +110,11 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
         test_loss_out.append(test_loss)
 
         # EARLY STOPPING LOGIC
-        if best_loss is None or train_loss < best_loss:
+        if -train_sil > 0.99:
+            best_params = copy.copy(model.state_dict())
+            print('Early stopping: Silhouette score exceeded 0.99')
+            break
+        elif best_loss is None or train_loss < best_loss:
             best_loss = train_loss
             patience = 0
             best_params = copy.copy(model.state_dict())
@@ -123,7 +127,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
 
         # luca: we observe loss*1e3 just for convenience. the loss scaling isn't necessary above
         print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tSilhouette score: {:.4f}'
-              .format(epoch, train_loss * 1e3, test_loss * 1e3, train_sil))
+              .format(epoch, train_loss * 1e3, test_loss * 1e3, -train_sil))
 
     if save and best_params is not None:
         model_file = f'{save_folder}{model_name}_model_state.pt'
@@ -149,8 +153,10 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
     device = get_device()
     print(device)
     model.to(device)
-    encoded_points_out = torch.FloatTensor()
-    labels_out = []
+    encoded_train_out = torch.FloatTensor()
+    train_labels_out = []
+    encoded_test_out = torch.FloatTensor()
+    test_labels_out = []
     model.eval()
 
     if compare:
@@ -166,8 +172,9 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
         frame = data["data"].to(device)
         labels = data["labels"]
         outputs, embeddings = model(frame)
-        encoded_points_out = torch.cat((encoded_points_out, embeddings.cpu()), 0)
-        labels_out.extend(labels)
+        encoded_train_out = torch.cat((encoded_train_out, embeddings.cpu()), 0)
+        train_labels_out.extend(labels)
+
         if compare:
             y_max = torch.max(outputs, frame).max()
             y_max = y_max.cpu().detach().numpy()
@@ -183,36 +190,42 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
                 plt.bar(ticks, outputs.cpu().detach().numpy()[0, 0, i, :])
                 plt.ylim((0, y_max))
                 plt.title(labels[i])
+    for data in test_loader:
+        frame = data["data"].to(device)
+        labels = data["labels"]
+        outputs, embeddings = model(frame)
+        encoded_test_out = torch.cat((encoded_test_out, embeddings.cpu()), 0)
+        test_labels_out.extend(labels)
 
     if show:
         # plot encoded data
         torch.Tensor.ndim = property(lambda self: len(self.shape))
-        x = encoded_points_out[:, 0].cpu()
-        y = encoded_points_out[:, 1].cpu()
+        x = encoded_test_out[:, 0].cpu()
+        y = encoded_test_out[:, 1].cpu()
         x = x.detach().numpy()
         y = y.detach().numpy()
         plt.figure()
 
-        if encoded_points_out.shape[1] == 3:
-            z = encoded_points_out[:, 2].cpu()
+        if encoded_test_out.shape[1] == 3:
+            z = encoded_test_out[:, 2].cpu()
             z = z.detach().numpy()
             ax = plt.axes(projection='3d')
         for label in classes:
             label_indices = []
-            for idx in range(len(labels_out)):
-                if labels_out[idx] == label:
+            for idx in range(len(test_labels_out)):
+                if test_labels_out[idx] == label:
                     label_indices.append(idx)
-            if encoded_points_out.shape[1] == 2:
+            if encoded_test_out.shape[1] == 2:
                 plt.scatter(x[label_indices], y[label_indices], label=label)
-            elif encoded_points_out.shape[1] == 3:
+            elif encoded_test_out.shape[1] == 3:
                 ax.scatter3D(x[label_indices], y[label_indices], z[label_indices], label=label, s=2)
                 ax.set_zlabel('Component 3')
 
         # present overall silhouette score
         # convert frame_labels to numeric and allocate to tensor to silhouette score
         le = preprocessing.LabelEncoder()
-        frame_labels_num = le.fit_transform(labels_out)
-        silhouette_avg = silhouette.silhouette.score(encoded_points_out, torch.as_tensor(frame_labels_num), loss=False)
+        frame_labels_num = le.fit_transform(test_labels_out)
+        silhouette_avg = silhouette.silhouette.score(encoded_test_out, torch.as_tensor(frame_labels_num), loss=False)
         print(f"Silhouette score: {silhouette_avg}")
 
         plt.xlabel('Component 1')
@@ -221,4 +234,4 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
         plt.suptitle("Bottleneck Data")
         plt.show()
 
-        return encoded_points_out, labels_out
+        return encoded_train_out, train_labels_out, encoded_test_out, test_labels_out
