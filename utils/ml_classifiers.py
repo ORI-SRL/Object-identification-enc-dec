@@ -12,19 +12,11 @@ from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 
 
-def svm_classifier(train_data, train_labels, test_data, test_labels, learn=False,
-                   lin_params=None, poly_params=None, rbf_params=None):
+def svm_classifier(train_data, train_labels, test_data, test_labels, learn=False):
     # find optimum parameters for svm classification with different kernels
     # the poly kernel is slowest so use random search rather than grid search
-    if lin_params is None:
-        lin_params = []
-    if poly_params is None:
-        poly_params = []
-    if rbf_params is None:
-        rbf_params = []
-
     if learn:
-        C_range = np.logspace(1, 4, 4)
+        C_range = np.logspace(0, 4, 5)
         gamma_range = np.logspace(-3, 1, 5)
         deg_range = np.linspace(2, 3, 2)
         cv = StratifiedKFold(n_splits=4, shuffle=False)
@@ -50,27 +42,30 @@ def svm_classifier(train_data, train_labels, test_data, test_labels, learn=False
         rbf_grid = RandomizedSearchCV(SVC(), param_distributions=rbf_param_grid, cv=cv, n_iter=50, return_train_score=1)
         rbf_grid.fit(train_data, train_labels)  # 0.01, 1000
         rbf_params = list(rbf_grid.best_params_.values())  # list(['rbf', 0.001, 'ovr', 100.0])
-    names = [
-        "Linear SVM",
-        "Poly SVM",
-        "RBF SVM"]
-    classifiers = [
-        SVC(kernel="linear", C=lin_params[0], decision_function_shape='ovr'),
-        SVC(kernel="rbf", gamma=rbf_params[1], C=rbf_params[3], decision_function_shape='ovr'),
-        SVC(kernel="poly", degree=poly_params[2], gamma=poly_params[1], C=poly_params[4],
-            decision_function_shape='ovr')
-    ]
+        names = [
+            "Linear SVM",
+            "Poly SVM",
+            "RBF SVM"]
+        classifiers = [
+            SVC(kernel="linear", C=lin_params[0], decision_function_shape='ovr'),
+            SVC(kernel="rbf", gamma=rbf_params[1], C=rbf_params[3], decision_function_shape='ovr'),
+            SVC(kernel="poly", degree=poly_params[2], gamma=poly_params[1], C=poly_params[4],
+                decision_function_shape='ovr')
+        ]
 
-    most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
+        most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
+    else:
+        svm = pickle.load(open('svm_params.py', 'rb'))
+        svm.fit(train_data, train_labels)
+        score = svm.score(test_data, test_labels)
+        svm.predict(test_data)
+        most_acc = svm
+
     return most_acc
 
 
-def tree_searches(train_data, train_labels, test_data, test_labels, learn=False,
-                  tree_params=None, forest_params=None):
-    if tree_params is None:
-        tree_params = []
-    if forest_params is None:
-        forest_params = []
+def tree_searches(train_data, train_labels, test_data, test_labels, learn=False):
+
     if learn:
         # similarly, here, learn the best parameters for clustering tree searches
         # Use GridSearches to find the optimum parameters for the decision trees
@@ -91,20 +86,25 @@ def tree_searches(train_data, train_labels, test_data, test_labels, learn=False,
         forest_grid.fit(train_data, train_labels)
         forest_params = list(forest_grid.best_params_.values())
 
-    names = [
-        "Decision Tree",
-        "Random Forest"]
-    classifiers = [
-        DecisionTreeClassifier(max_depth=tree_params[0]),
-        RandomForestClassifier(max_depth=forest_params[0], n_estimators=forest_params[2], max_features=forest_params[1])
-    ]
-    most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
+        names = [
+            "Decision Tree",
+            "Random Forest"]
+        classifiers = [
+            DecisionTreeClassifier(max_depth=tree_params[0]),
+            RandomForestClassifier(max_depth=forest_params[0], n_estimators=forest_params[2], max_features=forest_params[1])
+        ]
+        most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
+    else:
+        tree = pickle.load(open('tree_params.py', 'rb'))
+        tree.fit(train_data, train_labels)
+        score = tree.score(test_data, test_labels)
+        tree.predict(test_data)
+        most_acc = tree
+
     return most_acc
 
 
-def knn_classifier(train_data, train_labels, test_data, test_labels, learn=False, knn_params=None):
-    if knn_params is None:
-        knn_params = []
+def knn_classifier(train_data, train_labels, test_data, test_labels, learn=False):
 
     if learn:
         cv = StratifiedKFold(n_splits=4, shuffle=False)
@@ -122,7 +122,11 @@ def knn_classifier(train_data, train_labels, test_data, test_labels, learn=False
             KNeighborsClassifier(n_neighbors=knn_params[0], weights='distance')]
         most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
-        pickle.load('knn_params.py')
+        knn = pickle.load(open('knn_params.py', 'rb'))
+        knn.fit(train_data, train_labels)
+        score = knn.score(test_data, test_labels)
+        knn.predict(test_data)
+        most_acc = knn
 
     return most_acc
 
@@ -138,7 +142,7 @@ def compare_classifiers(classifiers, names, train_data, train_labels, test_data,
         clf.fit(train_data, train_labels)
         score = clf.score(test_data, test_labels)
         score_array[clf] = score
-        print_string = name + " " + str(score)
+        print_string = name + " " + "{:.3f}".format(score)
         print(print_string)
 
     most_acc = max(score_array, key=score_array.get)

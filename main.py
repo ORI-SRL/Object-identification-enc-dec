@@ -92,6 +92,8 @@ else:
 
     save_folder = './saved_model_states/ml_states/'
     pickle.dump(knn_params, open(f'{save_folder}knn_params', 'wb'))
+    pickle.dump(svm_params, open(f'{save_folder}svm_params', 'wb'))
+    pickle.dump(tree_params, open(f'{save_folder}tree_params', 'wb'))
 
 # model.load_state_dict(torch.load('final_model_state.pt'))
 # model.eval()
