@@ -95,7 +95,8 @@ def tree_searches(train_data, train_labels, test_data, test_labels, learn=False)
         ]
         most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
-        tree = pickle.load(open('tree_params.py', 'rb'))
+        folder = './saved_model_states/ml_states/'
+        tree = pickle.load(open(f'{folder}TwoLayerConv5Grasp_tree_params', 'rb'))
         tree.fit(train_data, train_labels)
         score = tree.score(test_data, test_labels)
         tree.predict(test_data)
@@ -122,7 +123,8 @@ def knn_classifier(train_data, train_labels, test_data, test_labels, learn=False
             KNeighborsClassifier(n_neighbors=knn_params[0], weights='distance')]
         most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
-        knn = pickle.load(open('knn_params.py', 'rb'))
+        folder = './saved_model_states/ml_states/'
+        knn = pickle.load(open(f'{folder}TwoLayerConv5Grasp_knn_params', 'rb'))
         knn.fit(train_data, train_labels)
         score = knn.score(test_data, test_labels)
         knn.predict(test_data)

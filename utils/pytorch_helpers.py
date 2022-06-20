@@ -26,8 +26,8 @@ def get_device():
     return device
 
 
-def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs=50, max_patience=10, save_folder='./',
-                save=True, show=True):
+def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
+                save_folder='./', save=True, show=True):
     model_name = model.__class__.__name__
     print(model_name)
 
@@ -130,7 +130,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_epochs
               .format(epoch, train_loss * 1e3, test_loss * 1e3, -train_sil))
 
     if save and best_params is not None:
-        model_file = f'{save_folder}{model_name}_model_state.pt'
+        model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state.pt'
         torch.save(best_params, model_file)
 
     if show:
