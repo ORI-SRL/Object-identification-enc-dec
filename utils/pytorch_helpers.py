@@ -39,95 +39,105 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
     train_loss_out = []
     test_loss_out = []
     train_sil_out = []
+    test_sil_out = []
 
     patience = 0
     best_loss = None
     best_params = None
-    for epoch in range(1, n_epochs + 1):
-        # monitor training loss
-        train_loss = 0.0
-        test_loss = 0.0
-        train_sil = 0.0
-        cycle = 0
+    try:
+        for epoch in range(1, n_epochs + 1):
+            # monitor training loss
+            train_loss = 0.0
+            test_loss = 0.0
+            train_sil = 0.0
+            test_sil = 0.0
+            cycle = 0
 
-        # Training
-        model.train()
-        for data in train_loader:
-            frame = data["data"].to(device)
-            frame_labels = data["labels"]
+            # Training
+            model.train()
+            for data in train_loader:
+                frame = data["data"].to(device)
+                frame_labels = data["labels"]
 
-            optimizer.zero_grad()
-            outputs, embeddings = model(frame)
+                optimizer.zero_grad()
+                outputs, embeddings = model(frame)
 
-            # check if NaNs have appeared and when
-            nan_check = torch.reshape(embeddings, (-1,))
-            if sum(torch.isnan(nan_check)) > 0:
-                print(f"NaN present at cycle {cycle}")
+                # check if NaNs have appeared and when
+                nan_check = torch.reshape(embeddings, (-1,))
+                if sum(torch.isnan(nan_check)) > 0:
+                    print(f"NaN present at cycle {cycle}")
 
-            loss = criterion(outputs, frame)
+                loss = criterion(outputs, frame)
 
-            # convert frame_labels to numeric and allocate to tensor to silhouette score
-            le = preprocessing.LabelEncoder()
-            frame_labels_num = le.fit_transform(frame_labels)
+                # convert frame_labels to numeric and allocate to tensor to silhouette score
+                le = preprocessing.LabelEncoder()
+                frame_labels_num = le.fit_transform(frame_labels)
 
-            # calculate the silhouette score at the bottleneck and add it to the loss value
-            silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
-            # silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels_num)
-            # silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
-            loss = (loss + 0.01 * silhouette_avg)
+                # calculate the silhouette score at the bottleneck and add it to the loss value
+                silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
+                # silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels_num)
+                # silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
+                loss = (loss + 0.01 * silhouette_avg)
 
-            loss.backward()  # loss +
-            optimizer.step()
-            train_loss += loss.item()
-            train_sil += silhouette_avg
-            cycle += 1
+                loss.backward()  # loss +
+                optimizer.step()
+                train_loss += loss.item()
+                train_sil += silhouette_avg
+                cycle += 1
 
-        train_loss = train_loss / len(train_loader)
-        train_loss_out.append(train_loss)
-        train_sil = train_sil / len(train_loader)
-        train_sil_out.append(train_sil)
+            train_loss = train_loss / len(train_loader)
+            train_loss_out.append(train_loss)
+            train_sil = train_sil / len(train_loader)
+            train_sil_out.append(train_sil)
 
-        model.eval()
-        for data in test_loader:
-            # take the next frame from the data_loader and process it through the model
-            frame = data["data"].to(device)
-            frame_labels = data["labels"]
+            model.eval()
+            for data in test_loader:
+                # take the next frame from the data_loader and process it through the model
+                frame = data["data"].to(device)
+                frame_labels = data["labels"]
 
-            # convert frame_labels to numeric and allocate to tensor to silhouette score
-            le = preprocessing.LabelEncoder()
-            frame_labels_num = le.fit_transform(frame_labels)
-            outputs, embeddings = model(frame)
+                # convert frame_labels to numeric and allocate to tensor to silhouette score
+                le = preprocessing.LabelEncoder()
+                frame_labels_num = le.fit_transform(frame_labels)
+                outputs, embeddings = model(frame)
 
-            # calculate the silhouette score at the bottleneck and add it to the loss value
-            # silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels)
-            # silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
-            silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
-            loss2 = criterion(outputs, frame)
-            loss2 = (loss2 + 0.01 * silhouette_avg)  # loss2 + 0.02 *
-            test_loss += loss2.item()
+                # calculate the silhouette score at the bottleneck and add it to the loss value
+                # silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels)
+                # silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
+                silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
+                loss2 = criterion(outputs, frame)
+                loss2 = (loss2 + 0.01 * silhouette_avg)  # loss2 + 0.02 *
+                test_loss += loss2.item()
+                test_sil += silhouette_avg
 
-        test_loss = test_loss / len(test_loader)
-        test_loss_out.append(test_loss)
+            test_loss = test_loss / len(test_loader)
+            test_loss_out.append(test_loss)
+            test_sil = test_sil / len(test_loader)
+            test_sil_out.append(test_sil)
 
-        # EARLY STOPPING LOGIC
-        if -train_sil > 0.99:
-            best_params = copy.copy(model.state_dict())
-            print('Early stopping: Silhouette score exceeded 0.99')
-            break
-        elif best_loss is None or train_loss < best_loss:
-            best_loss = train_loss
-            patience = 0
-            best_params = copy.copy(model.state_dict())
-        else:
-            patience += 1
-            if patience >= max_patience:
-                print(f'Early stopping: training terminated at epoch {epoch} due to es, '
-                      f'patience exceeded at {max_patience}')
+            # EARLY STOPPING LOGIC
+            if -test_sil > 0.99:
+                best_params = copy.copy(model.state_dict())
+                print('Early stopping: Silhouette score exceeded 0.99')
                 break
+            elif best_loss is None or test_loss < best_loss:
+                best_loss = test_loss
+                patience = 0
+                best_params = copy.copy(model.state_dict())
+            else:
+                patience += 1
+                if patience >= max_patience:
+                    print(f'Early stopping: training terminated at epoch {epoch} due to es, '
+                          f'patience exceeded at {max_patience}')
+                    break
 
-        # luca: we observe loss*1e3 just for convenience. the loss scaling isn't necessary above
-        print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tSilhouette score: {:.4f}'
-              .format(epoch, train_loss * 1e3, test_loss * 1e3, -train_sil))
+            # luca: we observe loss*1e3 just for convenience. the loss scaling isn't necessary above
+            print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tTraining silhouette score: {:.4f} '
+                  '\tTesting silhouette score {:.4f}'
+                  .format(epoch, train_loss * 1e3, test_loss * 1e3, -train_sil, -test_sil))
+    except:
+        model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state_failed.pt'
+        torch.save(best_params, model_file)
 
     if save and best_params is not None:
         model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state.pt'

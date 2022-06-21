@@ -7,8 +7,8 @@ import torch
 class ObjectGraspsDataset(Dataset):
     """Object Grasps Dataset"""
 
-    def __init__(self, data_array_file, labels_file, n_grasps, transform=None,
-                 train: bool = True):
+    def __init__(self, data_array_file, labels_file, n_grasps, data_max=None, data_min=None, transform=None,
+                 train: bool = True, pre_sort=False):
         """
         Args:
             array_file (string): Path to the saved ndarray file with grasp raw data.
@@ -32,19 +32,36 @@ class ObjectGraspsDataset(Dataset):
         X = torch.Tensor(shuffled_data)  # torch.Tensor(input_data.reshape((-1, 1, n_grasps, 19)))
         y = shuffled_labels
         self.transform = transform
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.1, stratify=y, random_state=20
-        )
-        data_max = X_train.view(-1, 19).max(
-            0).values.flatten()  # Luca: this finds the max for each sensor separately (they might have different baselines)
-        data_min = X_train.view(-1, 19).min(
-            0).values.flatten()  # the min in the normalization takes care of the negatives already (we push the whole distribution up)
-        if train:
-            self.data = (X_train - data_min) / (data_max - data_min)
-            self.targets = y_train
+        if pre_sort:
+            # allocate and shuffle the input data to prevent batches only being populated by a single object
+            seed = torch.Generator(device='cpu')
+            seed.manual_seed(42)
+            idx = torch.randperm(X.size(0), generator=seed)
+            x_train = X[idx, :, :, :]
+            x_test = X[idx, :, :, :]
+            y_train = []
+            y_test = []
+            for n in range(len(X)):
+                y_train.append(y[idx[n]])
+                y_test.append(y[idx[n]])
         else:
-            self.data = (X_test - data_min) / (data_max - data_min)
+            x_train, x_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.1, stratify=y, random_state=20
+            )
+
+        if train:
+            data_max = x_train.view(-1, 19).max(
+                0).values.flatten()  # Ollie: Take max from training before applying to testing
+            data_min = x_train.view(-1, 19).min(
+                0).values.flatten()
+            self.data = (x_train - data_min) / (data_max - data_min)
+            self.targets = y_train
+            self.max_vals = data_max
+            self.min_vals = data_min
+        else:
+            self.data = (x_test - data_min) / (data_max - data_min)
             self.targets = y_test
+
 
     def __len__(self):
         return len(self.targets)
