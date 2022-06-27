@@ -36,17 +36,21 @@ train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=0)  # t
 test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0)  # torch.from_numpy(test_data)
 
 if n_grasps == 10:
-    models = [TwoLayerConv, TwoLayerWBatchNorm, TwoLayerWDropout]  #
+    models = [TwoLayerWDropout]  # TwoLayerConv, TwoLayerWBatchNorm,
 elif n_grasps == 5:
     models = [TwoLayerConv5Grasp]
 loss_comparison_dict = {}
 
 TRAIN_MODEL = True
+USE_PREVIOUS = True
 if TRAIN_MODEL:
     for ModelArchitecture in models:
         model = ModelArchitecture()
         print(f'Total params: {(sum(p.numel() for p in model.parameters()) / 1000000.0):.2f}M')
 
+        if USE_PREVIOUS:
+            model_state = f'./saved_model_states/{model.__class__.__name__}_model_state.pt'
+            model.load_state_dict(torch.load(model_state))
         # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
         criterion = nn.MSELoss()
         # Optimizer
@@ -56,7 +60,7 @@ if TRAIN_MODEL:
 
         batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps,
                                                  n_epochs=1500,
-                                                 max_patience=75,
+                                                 max_patience=150,
                                                  save_folder=MODEL_SAVE_FOLDER,
                                                  save=True,
                                                  show=True)

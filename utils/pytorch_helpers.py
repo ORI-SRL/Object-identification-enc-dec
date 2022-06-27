@@ -139,6 +139,11 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
         model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state_failed.pt'
         torch.save(best_params, model_file)
 
+    print(
+        'Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tTraining silhouette score: {:.4f} '
+        '\tTesting silhouette score {:.4f}'
+            .format(epoch, train_loss * 1e3, test_loss * 1e3, -train_sil, -test_sil))
+
     if save and best_params is not None:
         model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state.pt'
         torch.save(best_params, model_file)
