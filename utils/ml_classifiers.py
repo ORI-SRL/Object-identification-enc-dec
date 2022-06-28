@@ -69,9 +69,9 @@ def tree_searches(train_data, train_labels, test_data, test_labels, learn=False)
     if learn:
         # similarly, here, learn the best parameters for clustering tree searches
         # Use GridSearches to find the optimum parameters for the decision trees
-        depth_range = np.linspace(2, 8, 7, dtype='int')
-        estimator_range = np.linspace(1, 5, 5, dtype='int')
-        feature_range = np.linspace(1, 3, 3, dtype='int')
+        depth_range = np.linspace(2, 16, 15, dtype='int')
+        estimator_range = np.linspace(1, 10, 10, dtype='int')
+        feature_range = np.linspace(1, 4, 4, dtype='int')
         tree_params_grid = dict(max_depth=depth_range)
         cv = StratifiedKFold(n_splits=4, shuffle=False)
 
