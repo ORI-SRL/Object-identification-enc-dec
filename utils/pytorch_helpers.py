@@ -14,7 +14,7 @@ def seed_experiment(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = True
 
 
@@ -142,6 +142,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
         print(inst)  # __str__ allows args to be printed directly,
         model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state_failed.pt'
         torch.save(best_params, model_file)
+        return
 
     print(
         'Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tTraining silhouette score: {:.4f} '
@@ -177,6 +178,7 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
     encoded_test_out = torch.FloatTensor()
     test_labels_out = []
     model.eval()
+    test_sil = 0.0
 
     if compare:
         plt.figure()
@@ -215,6 +217,12 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
         outputs, embeddings = model(frame)
         encoded_test_out = torch.cat((encoded_test_out, embeddings.cpu()), 0)
         test_labels_out.extend(labels)
+        # convert frame_labels to numeric and allocate to tensor to silhouette score
+        le = preprocessing.LabelEncoder()
+        frame_labels_num = le.fit_transform(labels)
+        silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
+        test_sil += silhouette_avg
+    test_sil = test_sil / len(test_loader)
 
     if show:
         # plot encoded data
@@ -253,4 +261,4 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
         plt.suptitle("Bottleneck Data")
         plt.show()
 
-        return encoded_train_out, train_labels_out, encoded_test_out, test_labels_out
+        return encoded_train_out, train_labels_out, encoded_test_out, test_labels_out, test_sil

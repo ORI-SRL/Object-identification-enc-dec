@@ -13,7 +13,7 @@ import numpy as np
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/'
-n_grasps = 3
+n_grasps = 10
 
 # luca: seeding the experiment is useful to get reproduceable results
 seed_experiment(123)
@@ -43,7 +43,7 @@ elif n_grasps == 3:
     models = [TwoLayerConv3Grasp]
 loss_comparison_dict = {}
 
-TRAIN_MODEL = True
+TRAIN_MODEL = False
 USE_PREVIOUS = True
 if TRAIN_MODEL:
     for ModelArchitecture in models:
@@ -90,15 +90,15 @@ else:
         model_state = f'./saved_model_states/{model.__class__.__name__}_{n_grasps}grasps_model_state.pt'
         model.load_state_dict(torch.load(model_state))
         model.eval()
-        train_data, train_labels, test_data, test_labels = test_model(
+        train_data, train_labels, test_data, test_labels, silhouette_score = test_model(
             model, train_loader, test_loader, classes, compare=False)
 
         # svm_params = svm_classifier(train_data.detach().numpy(), train_labels,
         #                             test_data.detach().numpy(), test_labels, learn=True)
         knn_params = knn_classifier(train_data.detach().numpy(), train_labels,
-                                    test_data.detach().numpy(), test_labels, learn=True)
+                                    test_data.detach().numpy(), test_labels, n_grasps, learn=False)
         tree_params = tree_searches(train_data.detach().numpy(), train_labels,
-                                    test_data.detach().numpy(), test_labels, learn=True)
+                                    test_data.detach().numpy(), test_labels, n_grasps, learn=True)
 
         save_folder = './saved_model_states/ml_states/'
         # pickle.dump(knn_params, open(f'{save_folder}{model.__class__.__name__}_knn_params', 'wb'))

@@ -64,14 +64,14 @@ def svm_classifier(train_data, train_labels, test_data, test_labels, learn=False
     return most_acc
 
 
-def tree_searches(train_data, train_labels, test_data, test_labels, learn=False):
-
+def tree_searches(train_data, train_labels, test_data, test_labels, n_grasps, learn=False):
+    folder = './saved_model_states/ml_states/'
     if learn:
         # similarly, here, learn the best parameters for clustering tree searches
         # Use GridSearches to find the optimum parameters for the decision trees
         depth_range = np.linspace(2, 16, 15, dtype='int')
         estimator_range = np.linspace(1, 10, 10, dtype='int')
-        feature_range = np.linspace(1, 4, 4, dtype='int')
+        feature_range = np.linspace(1, 4, 4, dtype='float')
         tree_params_grid = dict(max_depth=depth_range)
         cv = StratifiedKFold(n_splits=4, shuffle=False)
 
@@ -95,18 +95,18 @@ def tree_searches(train_data, train_labels, test_data, test_labels, learn=False)
         ]
         most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
-        folder = './saved_model_states/ml_states/'
         tree = pickle.load(open(f'{folder}TwoLayerConv5Grasp_tree_params', 'rb'))
         tree.fit(train_data, train_labels)
         score = tree.score(test_data, test_labels)
         tree.predict(test_data)
         most_acc = tree
-
+    state_file = f'{folder}{n_grasps}_grasps_tree_params.pt'
+    pickle.dump(most_acc, open(state_file, 'wb'))
     return most_acc
 
 
-def knn_classifier(train_data, train_labels, test_data, test_labels, learn=False):
-
+def knn_classifier(train_data, train_labels, test_data, test_labels, n_grasps, learn=False):
+    folder = './saved_model_states/ml_states/'
     if learn:
         cv = StratifiedKFold(n_splits=4, shuffle=False)
         knn_range = list(range(1, 31))
@@ -123,13 +123,14 @@ def knn_classifier(train_data, train_labels, test_data, test_labels, learn=False
             KNeighborsClassifier(n_neighbors=knn_params[0], weights='distance')]
         most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
-        folder = './saved_model_states/ml_states/'
         knn = pickle.load(open(f'{folder}TwoLayerConv5Grasp_knn_params', 'rb'))
         knn.fit(train_data, train_labels)
         score = knn.score(test_data, test_labels)
         knn.predict(test_data)
         most_acc = knn
 
+    state_file = f'{folder}{n_grasps}_grasps_knn_params.pt'
+    pickle.dump(most_acc, open(state_file, 'wb'))
     return most_acc
 
 
