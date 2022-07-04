@@ -7,8 +7,6 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 
 
@@ -66,12 +64,13 @@ def svm_classifier(train_data, train_labels, test_data, test_labels, learn=False
 
 def tree_searches(train_data, train_labels, test_data, test_labels, n_grasps, learn=False):
     folder = './saved_model_states/ml_states/'
+    state_file = f'{folder}{n_grasps}_grasps_tree_params.pt'
     if learn:
         # similarly, here, learn the best parameters for clustering tree searches
         # Use GridSearches to find the optimum parameters for the decision trees
         depth_range = np.linspace(2, 16, 15, dtype='int')
         estimator_range = np.linspace(1, 10, 10, dtype='int')
-        feature_range = np.linspace(1, 4, 4, dtype='float')
+        feature_range = np.linspace(1, 3, 3, dtype='float')
         tree_params_grid = dict(max_depth=depth_range)
         cv = StratifiedKFold(n_splits=4, shuffle=False)
 
@@ -91,22 +90,24 @@ def tree_searches(train_data, train_labels, test_data, test_labels, n_grasps, le
             "Random Forest"]
         classifiers = [
             DecisionTreeClassifier(max_depth=tree_params[0]),
-            RandomForestClassifier(max_depth=forest_params[0], n_estimators=forest_params[2], max_features=forest_params[1])
+            RandomForestClassifier(max_depth=forest_params[0], n_estimators=forest_params[2],
+                                   max_features=forest_params[1])
         ]
-        most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
+        tree, score = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
-        tree = pickle.load(open(f'{folder}TwoLayerConv5Grasp_tree_params', 'rb'))
+        tree = pickle.load(open(state_file, 'rb'))
         tree.fit(train_data, train_labels)
         score = tree.score(test_data, test_labels)
         tree.predict(test_data)
-        most_acc = tree
-    state_file = f'{folder}{n_grasps}_grasps_tree_params.pt'
-    pickle.dump(most_acc, open(state_file, 'wb'))
-    return most_acc
+        tree = tree
+    plot_confusion(test_data, test_labels, tree)
+    pickle.dump(tree, open(state_file, 'wb'))
+    return tree, score
 
 
 def knn_classifier(train_data, train_labels, test_data, test_labels, n_grasps, learn=False):
     folder = './saved_model_states/ml_states/'
+    state_file = f'{folder}{n_grasps}_grasps_knn_params.pt'
     if learn:
         cv = StratifiedKFold(n_splits=4, shuffle=False)
         knn_range = list(range(1, 31))
@@ -121,23 +122,22 @@ def knn_classifier(train_data, train_labels, test_data, test_labels, n_grasps, l
         classifiers = [
             KNeighborsClassifier(n_neighbors=knn_params[0]),
             KNeighborsClassifier(n_neighbors=knn_params[0], weights='distance')]
-        most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
+        knn, score = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
-        knn = pickle.load(open(f'{folder}TwoLayerConv5Grasp_knn_params', 'rb'))
+        knn = pickle.load(open(state_file, 'rb'))
         knn.fit(train_data, train_labels)
         score = knn.score(test_data, test_labels)
-        knn.predict(test_data)
-        most_acc = knn
+        predict_labels = knn.predict(test_data)
 
-    state_file = f'{folder}{n_grasps}_grasps_knn_params.pt'
-    pickle.dump(most_acc, open(state_file, 'wb'))
-    return most_acc
+        knn = knn
+    plot_confusion(test_data, test_labels, knn)
+    pickle.dump(knn, open(state_file, 'wb'))
+    return knn, score
 
 
 def compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels):
     i = 0
     score_array = {}
-    unique_labels = list(set(train_labels))
 
     for name, clf in zip(names, classifiers):
         # ax = plt.subplot(1, len(classifiers) + 1, i)
@@ -149,11 +149,16 @@ def compare_classifiers(classifiers, names, train_data, train_labels, test_data,
         print(print_string)
 
     most_acc = max(score_array, key=score_array.get)
-    pred_labels = most_acc.predict(test_data)
-    cm = confusion_matrix(test_labels, pred_labels, labels=unique_labels)
+    score = max(score_array.values())
+    return most_acc, score
+
+
+def plot_confusion(data, labels, model_fit):
+    unique_labels = sorted(list(set(labels)))
+    pred_labels = model_fit.predict(data)
+    cm = confusion_matrix(labels, pred_labels, labels=unique_labels)
     cm_display = ConfusionMatrixDisplay(cm, display_labels=unique_labels).plot()
     fig = plt.figure()
-    cm_display_percentages = sns.heatmap(cm / (len(test_labels) / len(unique_labels)),
+    cm_display_percentages = sns.heatmap(cm / (len(labels) / len(unique_labels)),
                                          annot=True, fmt='.2%', cmap='Blues', xticklabels=unique_labels,
                                          yticklabels=unique_labels).plot()
-    return most_acc
