@@ -149,6 +149,8 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
         '\tTesting silhouette score {:.4f}'
             .format(epoch, train_loss * 1e3, test_loss * 1e3, -train_sil, -test_sil))
 
+    torch.cuda.empty_cache()
+
     if save and best_params is not None:
         model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state.pt'
         torch.save(best_params, model_file)
@@ -261,4 +263,4 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
         plt.suptitle("Bottleneck Data")
         plt.show()
 
-        return encoded_train_out, train_labels_out, encoded_test_out, test_labels_out, test_sil
+        return encoded_train_out, train_labels_out, encoded_test_out, test_labels_out, -test_sil

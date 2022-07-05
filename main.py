@@ -38,14 +38,16 @@ test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0, shuffl
 
 if n_grasps == 10:
     models = [TwoLayerWDropout]  # TwoLayerConv, TwoLayerWBatchNorm,
+elif n_grasps == 7:
+    models = [TwoLayerConv7Grasp]
 elif n_grasps == 5:
     models = [TwoLayerConv5Grasp]
 elif n_grasps == 3:
     models = [TwoLayerConv3Grasp]
 loss_comparison_dict = {}
 
-TRAIN_MODEL = False
-USE_PREVIOUS = True
+TRAIN_MODEL = True
+USE_PREVIOUS = False
 if TRAIN_MODEL:
     for ModelArchitecture in models:
         model = ModelArchitecture()
@@ -63,7 +65,7 @@ if TRAIN_MODEL:
 
         batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps,
                                                  n_epochs=1500,
-                                                 max_patience=150,
+                                                 max_patience=100,
                                                  save_folder=MODEL_SAVE_FOLDER,
                                                  save=True,
                                                  show=True)
@@ -97,8 +99,8 @@ else:
         # svm_params = svm_classifier(train_data.detach().numpy(), train_labels,
         #                             test_data.detach().numpy(), test_labels, learn=True)
         knn_params, knn_acc = knn_classifier(train_data.detach().numpy(), train_labels,
-                                             test_data.detach().numpy(), test_labels, n_grasps, learn=False)
+                                             test_data.detach().numpy(), test_labels, n_grasps, learn=True)
         tree_params, tree_acc = tree_searches(train_data.detach().numpy(), train_labels,
-                                              test_data.detach().numpy(), test_labels, n_grasps, learn=False)
-        print(f'knn accuracy: {knn_acc}\t tree tree accuracy: {tree_acc}')
+                                              test_data.detach().numpy(), test_labels, n_grasps, learn=True)
+        print(f'knn accuracy: {knn_acc}\t tree accuracy: {tree_acc}')
 print('finished')
