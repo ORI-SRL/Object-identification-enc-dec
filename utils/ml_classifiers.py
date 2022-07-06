@@ -100,7 +100,7 @@ def tree_searches(train_data, train_labels, test_data, test_labels, n_grasps, le
         score = tree.score(test_data, test_labels)
         tree.predict(test_data)
         tree = tree
-    plot_confusion(test_data, test_labels, tree)
+    plot_confusion(test_data, test_labels, tree, n_grasps)
     pickle.dump(tree, open(state_file, 'wb'))
     return tree, score
 
@@ -130,7 +130,7 @@ def knn_classifier(train_data, train_labels, test_data, test_labels, n_grasps, l
         predict_labels = knn.predict(test_data)
 
         knn = knn
-    plot_confusion(test_data, test_labels, knn)
+    plot_confusion(test_data, test_labels, knn, n_grasps)
     pickle.dump(knn, open(state_file, 'wb'))
     return knn, score
 
@@ -153,11 +153,12 @@ def compare_classifiers(classifiers, names, train_data, train_labels, test_data,
     return most_acc, score
 
 
-def plot_confusion(data, labels, model_fit):
+def plot_confusion(data, labels, model_fit, n_grasps):
     unique_labels = sorted(list(set(labels)))
     pred_labels = model_fit.predict(data)
     cm = confusion_matrix(labels, pred_labels, labels=unique_labels)
     cm_display = ConfusionMatrixDisplay(cm, display_labels=unique_labels).plot()
+    cm.ax_.set_title(f'{n_grasps} grasps - {model_fit.__class__.__name__}')
     fig = plt.figure()
     cm_display_percentages = sns.heatmap(cm / (len(labels) / len(unique_labels)),
                                          annot=True, fmt='.2%', cmap='Blues', xticklabels=unique_labels,

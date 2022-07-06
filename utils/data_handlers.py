@@ -18,17 +18,18 @@ class ObjectGraspsDataset(Dataset):
 
         input_data = np.load(data_array_file)
         input_targets = np.load(labels_file)
-        shuffled_data = np.empty((1, 1, n_grasps, 19))
+        shuffled_data = np.empty((1, 1, 10, 19))
         shuffled_labels = []
         labels = list(set(input_targets))
         # reshape data to align sensors but maintain label for each grasp
         for label in labels:
             d_label = input_data[label == input_targets]
-            if n_grasps != 7:
-                d_shuffled = d_label.reshape((-1, 1, n_grasps, 19))
-            else:
-                dim_len = int(np.floor(len(d_label) / 7))
-                d_shuffled = d_label[0:dim_len*n_grasps, :].reshape((-1, 1, n_grasps, 19))
+            # if n_grasps != 7:
+            #    d_shuffled = d_label.reshape((-1, 1, n_grasps, 19))
+            # else:
+            dim_len = int(np.floor(len(d_label) / n_grasps))
+            d_shuffled = d_label[0:dim_len*n_grasps, :].reshape((-1, 1, n_grasps, 19))
+            d_shuffled = np.pad(d_shuffled, ((0, 0), (0, 0), (0, 10-n_grasps), (0, 0)))
             shuffled_data = np.append(shuffled_data, d_shuffled, axis=0)
             l_shuffled = [label] * d_shuffled.shape[0]
             shuffled_labels.extend(l_shuffled)
