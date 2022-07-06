@@ -28,8 +28,8 @@ class ObjectGraspsDataset(Dataset):
             #    d_shuffled = d_label.reshape((-1, 1, n_grasps, 19))
             # else:
             dim_len = int(np.floor(len(d_label) / n_grasps))
-            d_shuffled = d_label[0:dim_len*n_grasps, :].reshape((-1, 1, n_grasps, 19))
-            d_shuffled = np.pad(d_shuffled, ((0, 0), (0, 0), (0, 10-n_grasps), (0, 0)))
+            d_shuffled = d_label[0:dim_len * n_grasps, :].reshape((-1, 1, n_grasps, 19))
+            d_shuffled = np.pad(d_shuffled, ((0, 0), (0, 0), (0, 10 - n_grasps), (0, 0)))
             shuffled_data = np.append(shuffled_data, d_shuffled, axis=0)
             l_shuffled = [label] * d_shuffled.shape[0]
             shuffled_labels.extend(l_shuffled)
@@ -66,7 +66,6 @@ class ObjectGraspsDataset(Dataset):
         else:
             self.data = (x_test - data_min) / (data_max - data_min)
             self.targets = y_test
-
 
     def __len__(self):
         return len(self.targets)

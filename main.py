@@ -14,7 +14,7 @@ import numpy as np
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/'
-n_grasps = [10, 7, 5, 3, 1]
+n_grasps = [7, 5, 3, 1]
 models = [TwoLayerConv, TwoLayerWBatchNorm, TwoLayerWDropout]
 loss_comparison_dict = {}
 

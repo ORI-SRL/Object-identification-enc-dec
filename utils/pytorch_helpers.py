@@ -78,7 +78,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
                 silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
                 # silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels_num)
                 # silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
-                loss = (loss + 0.01 * silhouette_avg)
+                loss = (loss + 0.015 * silhouette_avg)
 
                 loss.backward()  # loss +
                 optimizer.step()
@@ -107,7 +107,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
                 # silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
                 silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
                 loss2 = criterion(outputs, frame)
-                loss2 = (loss2 + 0.01 * silhouette_avg)  # loss2 + 0.02 *
+                loss2 = (loss2 + 0.015 * silhouette_avg)  # loss2 + 0.02 *
                 test_loss += loss2.item()
                 test_sil += silhouette_avg
 
@@ -132,6 +132,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
                           f'patience exceeded at {max_patience}')
                     break
 
+            loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_sil_out}
             # luca: we observe loss*1e3 just for convenience. the loss scaling isn't necessary above
             print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tTraining silhouette score: {:.4f} '
                   '\tTesting silhouette score {:.4f}'
@@ -145,11 +146,11 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
         print(inst)  # __str__ allows args to be printed directly,
         model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state_failed.pt'
         torch.save(best_params, model_file)
-        test_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_sil_out}
+        loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_sil_out}
         # open file for writing, "w" is writing
         w = csv.writer(open(f'./saved_model_states/{model.__class__.__name__}_{n_grasps}_losses_failed.pt', 'w'))
         # loop over dictionary keys and values
-        for key, val in dict.items():
+        for key, val in loss_dict.items():
             # write every key and value to file
             w.writerow([key, val])
         return
@@ -159,14 +160,13 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
         '\tTesting silhouette score {:.4f}'
             .format(epoch, train_loss * 1e3, test_loss * 1e3, -train_sil, -test_sil))
 
-
     if save and best_params is not None:
         model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state.pt'
         torch.save(best_params, model_file)
         # open file for writing, "w" is writing
         w = csv.writer(open(f'./saved_model_states/{model.__class__.__name__}_{n_grasps}_losses.pt', 'w'))
         # loop over dictionary keys and values
-        for key, val in dict.items():
+        for key, val in loss_dict.items():
             # write every key and value to file
             w.writerow([key, val])
 
@@ -180,7 +180,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
         plt.legend()
         plt.show()
 
-    return best_params, test_dict
+    return best_params, loss_dict
 
 
 def test_model(model, train_loader, test_loader, classes, show=True, compare=False):
