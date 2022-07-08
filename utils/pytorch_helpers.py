@@ -88,7 +88,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
 
             train_loss = train_loss / len(train_loader)
             train_loss_out.append(train_loss)
-            train_sil = train_sil / len(train_loader)
+            train_sil = train_sil.detach() / len(train_loader)
             train_sil_out.append(train_sil)
 
             model.eval()
@@ -113,7 +113,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
 
             test_loss = test_loss / len(test_loader)
             test_loss_out.append(test_loss)
-            test_sil = test_sil / len(test_loader)
+            test_sil = test_sil.detach() / len(test_loader)
             test_sil_out.append(test_sil)
 
             # EARLY STOPPING LOGIC
@@ -144,6 +144,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
         print(type(inst))  # the exception instance
         print(inst.args)  # arguments stored in .args
         print(inst)  # __str__ allows args to be printed directly,
+        torch.cuda.memory_snapshot()
         model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state_failed.pt'
         torch.save(best_params, model_file)
         loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_sil_out}
