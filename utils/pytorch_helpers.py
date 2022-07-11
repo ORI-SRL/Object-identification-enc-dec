@@ -30,7 +30,7 @@ def get_device():
 def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
                 save_folder='./', save=True, show=True):
     model_name = model.__class__.__name__
-    print(model_name)
+    print(f'{model_name} {n_grasps} grasps')
 
     device = get_device()
     print(device)

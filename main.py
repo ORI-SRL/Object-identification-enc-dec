@@ -27,7 +27,7 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 batch_size = 32
 
 TRAIN_MODEL = True
-USE_PREVIOUS = False
+USE_PREVIOUS = True
 
 for ModelArchitecture in models:
     for num_grasps in n_grasps:
@@ -52,7 +52,7 @@ for ModelArchitecture in models:
             print(f'Total params: {(sum(p.numel() for p in model.parameters()) / 1000000.0):.2f}M')
 
             if USE_PREVIOUS:
-                model_state = f'./saved_model_states/{model.__class__.__name__}_{num_grasps}grasps_model_state_failed.pt'
+                model_state = f'./saved_model_states/{model.__class__.__name__}_{num_grasps}grasps_model_state.pt'
                 if exists(model_state):
                     model.load_state_dict(torch.load(model_state))
             # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
@@ -73,17 +73,17 @@ for ModelArchitecture in models:
 
             # plot stuff to choose model
 
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            plt.title('Model Comparison')
+            # fig = plt.figure()
+            # ax = fig.add_subplot(111)
+            # plt.title('Model Comparison')
 
-            for key in loss_comparison_dict.keys():
-                plt.plot(loss_comparison_dict[key], label=key)
+            # for key in loss_comparison_dict.keys():
+            #     plt.plot(loss_comparison_dict[key], label=key)
 
-            plt.xlabel('epochs')
-            plt.ylabel('test loss')
-            plt.legend()
-            plt.show()
+            # plt.xlabel('epochs')
+            # plt.ylabel('test loss')
+            # plt.legend()
+            # plt.show()
 
         else:
 
