@@ -10,6 +10,7 @@ from utils.data_handlers import ObjectGraspsDataset
 from torch.utils.data import DataLoader
 from utils.networks import *
 from utils.ml_classifiers import svm_classifier, knn_classifier, tree_searches, compare_classifiers
+from utils.loss_plotting import *
 import numpy as np
 
 DATA_PATH = os.path.abspath(os.getcwd())
@@ -26,8 +27,11 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-TRAIN_MODEL = True
+TRAIN_MODEL = False
+TEST_MODEL = False
 USE_PREVIOUS = True
+COMPARE_LOSSES = True
+
 
 for ModelArchitecture in models:
     for num_grasps in n_grasps:
@@ -45,6 +49,11 @@ for ModelArchitecture in models:
                                   shuffle=True)  # torch.from_numpy(train_data)
         test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0,
                                  shuffle=True)  # torch.from_numpy(test_data)
+
+        if COMPARE_LOSSES:
+            model = ModelArchitecture()
+            model_file = f'{MODEL_SAVE_FOLDER}losses/{model.__class__.__name__}_{num_grasps}_losses.csv'
+            plot_silhouette(model_file, model, num_grasps)
 
         if TRAIN_MODEL:
 
@@ -85,7 +94,7 @@ for ModelArchitecture in models:
             # plt.legend()
             # plt.show()
 
-        else:
+        elif TEST_MODEL:
 
             # os.listdir('./saved_model_states'):
             model = ModelArchitecture()
