@@ -22,7 +22,7 @@ def plot_silhouette(file_path, model, n_grasps):
                             data_float = [-float(x[7:14]) for x in data_str]
                         else:
                             data_float = [float(x) for x in data_str]
-                        print(row)
+                        # print(row)
                         loss_dict[row[0]] = data_float
 
         # 'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_sil_out
@@ -33,15 +33,15 @@ def plot_silhouette(file_path, model, n_grasps):
         max_sil_idx = np.argmax(silhouette_score)
 
         fig, [ax1, ax2] = plt.subplots(1, 2)
-        ax1.plot(train_loss)
-        ax1.plot(test_loss)
+        ax1.plot(train_loss, label='Training losses')
+        ax1.plot(test_loss, label='Testing losses')
         ax1.legend()
-        ax2.plot(silhouette_score)
+        ax2.plot(silhouette_score, label='Silhouette Score')
         ax2.scatter(max_sil_idx, max_silhouette)
         ax2.legend()
         fig.suptitle(f'{model_name} {n_grasps} grasps')
         ax1.set_title('Losses')
         ax2.set_title(f'Silhouette score. max: {max_silhouette}')
-        plt.show()
+        # plt.show()
         fig = plt.gcf()
         fig.set_size_inches(8, 5)

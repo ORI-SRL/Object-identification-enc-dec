@@ -69,8 +69,8 @@ def tree_searches(train_data, train_labels, test_data, test_labels, n_grasps, le
         # similarly, here, learn the best parameters for clustering tree searches
         # Use GridSearches to find the optimum parameters for the decision trees
         depth_range = np.linspace(2, 16, 15, dtype='int')
-        estimator_range = np.linspace(1, 10, 10, dtype='int')
-        feature_range = np.linspace(1, 3, 3, dtype='float')
+        estimator_range = np.linspace(5, 35, 15, dtype='int')
+        # feature_range = np.linspace(7, 7, 1, dtype='int')
         tree_params_grid = dict(max_depth=depth_range)
         cv = StratifiedKFold(n_splits=4, shuffle=False)
 
@@ -80,7 +80,7 @@ def tree_searches(train_data, train_labels, test_data, test_labels, n_grasps, le
         tree_params = list(tree_grid.best_params_.values())
 
         # random forest classifier
-        forest_params_grid = dict(max_depth=depth_range, n_estimators=estimator_range, max_features=feature_range)
+        forest_params_grid = dict(max_depth=depth_range, n_estimators=estimator_range)  # , max_features=feature_range)
         forest_grid = GridSearchCV(RandomForestClassifier(), param_grid=forest_params_grid, cv=cv)
         forest_grid.fit(train_data, train_labels)
         forest_params = list(forest_grid.best_params_.values())
@@ -90,8 +90,8 @@ def tree_searches(train_data, train_labels, test_data, test_labels, n_grasps, le
             "Random Forest"]
         classifiers = [
             DecisionTreeClassifier(max_depth=tree_params[0]),
-            RandomForestClassifier(max_depth=forest_params[0], n_estimators=forest_params[2],
-                                   max_features=forest_params[1])
+            RandomForestClassifier(max_depth=forest_params[0],  n_estimators=forest_params[1])
+                                   # max_features=forest_params[1])
         ]
         tree, score = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
@@ -158,7 +158,7 @@ def plot_confusion(data, labels, model_fit, n_grasps):
     pred_labels = model_fit.predict(data)
     cm = confusion_matrix(labels, pred_labels, labels=unique_labels)
     cm_display = ConfusionMatrixDisplay(cm, display_labels=unique_labels).plot()
-    cm.ax_.set_title(f'{n_grasps} grasps - {model_fit.__class__.__name__}')
+    cm_display.ax_.set_title(f'{n_grasps} grasps - {model_fit.__class__.__name__}')
     fig = plt.figure()
     cm_display_percentages = sns.heatmap(cm / (len(labels) / len(unique_labels)),
                                          annot=True, fmt='.2%', cmap='Blues', xticklabels=unique_labels,
