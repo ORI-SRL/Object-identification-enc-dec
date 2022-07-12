@@ -186,7 +186,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
 
 def test_model(model, train_loader, test_loader, classes, show=True, compare=False):
     model_name = model.__class__.__name__
-    print(model_name)
+    # print(model_name)
 
     device = get_device()
     print(device)
@@ -277,6 +277,6 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
         plt.ylabel('Component 2')
         plt.legend()
         plt.suptitle("Bottleneck Data")
-        plt.show()
+        # plt.show()
 
         return encoded_train_out, train_labels_out, encoded_test_out, test_labels_out, -test_sil
