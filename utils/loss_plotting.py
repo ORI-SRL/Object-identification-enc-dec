@@ -13,16 +13,17 @@ def plot_silhouette(file_path, model, n_grasps):
         with open(file_path, mode='r') as infile:
             reader = csv.reader(infile)
             for row in reader:
-                if row:
-                    data_str_long = row[1][1:-1]
-                    data_str = data_str_long.split(', ')
-                    if "tensor" in data_str_long:
-                        data_str = data_str[0::2]
-                        data_float = [-float(x[7:14]) for x in data_str]
-                    else:
-                        data_float = [float(x) for x in data_str]
-                    print(row)
-                    loss_dict[row[0]] = data_float
+                if len(row)>0:
+                    if row[0]:
+                        data_str_long = row[1][1:-1]
+                        data_str = data_str_long.split(', ')
+                        if "tensor" in data_str_long:
+                            data_str = data_str[0::2]
+                            data_float = [-float(x[7:14]) for x in data_str]
+                        else:
+                            data_float = [float(x) for x in data_str]
+                        print(row)
+                        loss_dict[row[0]] = data_float
 
         # 'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_sil_out
         train_loss = loss_dict['training']
@@ -31,7 +32,6 @@ def plot_silhouette(file_path, model, n_grasps):
         max_silhouette = max(silhouette_score)
         max_sil_idx = np.argmax(silhouette_score)
 
-        plt.figure(figsize=(8, 6), dpi=80)
         fig, [ax1, ax2] = plt.subplots(1, 2)
         ax1.plot(train_loss)
         ax1.plot(test_loss)
@@ -43,3 +43,5 @@ def plot_silhouette(file_path, model, n_grasps):
         ax1.set_title('Losses')
         ax2.set_title(f'Silhouette score. max: {max_silhouette}')
         plt.show()
+        fig = plt.gcf()
+        fig.set_size_inches(8, 5)
