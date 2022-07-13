@@ -34,7 +34,6 @@ TEST_MODEL = True
 USE_PREVIOUS = True
 COMPARE_LOSSES = False
 
-
 for ModelArchitecture in models:
     for num_grasps in n_grasps:
 
@@ -63,7 +62,8 @@ for ModelArchitecture in models:
             _, _, _, _, silhouette_score = test_model(
                 model, train_loader, test_loader, classes, compare=False)
             plt.close('all')
-            sil_comparison_dict[f'{model.__class__.__name__}_{num_grasps}'] = silhouette_score.cpu().detach().numpy().item()
+            sil_comparison_dict[
+                f'{model.__class__.__name__}_{num_grasps}'] = silhouette_score.cpu().detach().numpy().item()
 
         if TRAIN_MODEL:
 
@@ -113,13 +113,14 @@ for ModelArchitecture in models:
             train_data, train_labels, test_data, test_labels, silhouette_score = test_model(
                 model, train_loader, test_loader, classes, compare=False)
 
-            # svm_params = svm_classifier(train_data.detach().numpy(), train_labels,
-            #                             test_data.detach().numpy(), test_labels, learn=True)
+            svm_params, svm_acc = svm_classifier(train_data.detach().numpy(), train_labels,
+                                                 test_data.detach().numpy(), test_labels, num_grasps, learn=False)
             knn_params, knn_acc = knn_classifier(train_data.detach().numpy(), train_labels,
-                                                 test_data.detach().numpy(), test_labels, num_grasps, learn=True)
+                                                 test_data.detach().numpy(), test_labels, num_grasps, learn=False)
             tree_params, tree_acc = tree_searches(train_data.detach().numpy(), train_labels,
-                                                  test_data.detach().numpy(), test_labels, num_grasps, learn=True)
-            print(f'knn accuracy: {knn_acc}\t tree accuracy: {tree_acc}')
+                                                  test_data.detach().numpy(), test_labels, num_grasps, learn=False)
+            print('svm accuracy: {:.4f}\t knn accuracy: {:.4f} \t tree accuracy: {:.4f}'.format(svm_acc, knn_acc, tree_acc))
+            ml_dict[f'{model.__class__.__name__}_{num_grasps}_svm'] = svm_params
             ml_dict[f'{model.__class__.__name__}_{num_grasps}_knn'] = knn_params
             ml_dict[f'{model.__class__.__name__}_{num_grasps}_tree'] = tree_params
             with open('./saved_model_states/classifier_comparison.pkl', 'wb') as f:

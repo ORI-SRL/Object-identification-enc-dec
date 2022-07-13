@@ -10,13 +10,15 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 
 
-def svm_classifier(train_data, train_labels, test_data, test_labels, learn=False):
+def svm_classifier(train_data, train_labels, test_data, test_labels, n_grasps, learn=False):
     # find optimum parameters for svm classification with different kernels
     # the poly kernel is slowest so use random search rather than grid search
+    folder = './saved_model_states/ml_states/'
+    state_file = f'{folder}{n_grasps}_grasps_svm_params.pt'
     if learn:
-        C_range = np.logspace(0, 4, 5)
+        C_range = np.logspace(-2, 1, 4)
         gamma_range = np.logspace(-3, 1, 5)
-        deg_range = np.linspace(2, 3, 2)
+        deg_range = np.linspace(2, 3, 2, dtype='int')
         cv = StratifiedKFold(n_splits=4, shuffle=False)
 
         # Apply a linear kernel
@@ -51,15 +53,17 @@ def svm_classifier(train_data, train_labels, test_data, test_labels, learn=False
                 decision_function_shape='ovr')
         ]
 
-        most_acc = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
+        svm, score = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
-        svm = pickle.load(open('svm_params.py', 'rb'))
+        svm = pickle.load(open(state_file, 'rb'))
         svm.fit(train_data, train_labels)
         score = svm.score(test_data, test_labels)
         svm.predict(test_data)
-        most_acc = svm
+        svm = svm
 
-    return most_acc
+    plot_confusion(test_data, test_labels, svm, n_grasps)
+    pickle.dump(svm, open(state_file, 'wb'))
+    return svm, score
 
 
 def tree_searches(train_data, train_labels, test_data, test_labels, n_grasps, learn=False):
