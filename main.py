@@ -125,6 +125,7 @@ for ModelArchitecture in models:
             ml_dict[f'{model.__class__.__name__}_{num_grasps}_tree'] = tree_params
             with open('./saved_model_states/classifier_comparison.pkl', 'wb') as f:
                 pickle.dump(ml_dict, f)
+            plt.close('all')
 if COMPARE_LOSSES:
     with open('./saved_model_states/silhouette_comparison.pkl', 'wb') as f:
         pickle.dump(sil_comparison_dict, f)
