@@ -4,7 +4,7 @@ import seaborn as sns
 import pickle
 from sklearn.model_selection import StratifiedKFold, GridSearchCV, RandomizedSearchCV
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import SVC
+from sklearn.svm import SVC, LinearSVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix, ConfusionMatrixDisplay
@@ -16,41 +16,43 @@ def svm_classifier(train_data, train_labels, test_data, test_labels, n_grasps, l
     folder = './saved_model_states/ml_states/'
     state_file = f'{folder}{n_grasps}_grasps_svm_params.pt'
     if learn:
-        C_range = np.logspace(-2, 1, 4)
+        datapoints = 1500
+        C_range = np.logspace(-3, 2, 6)
         gamma_range = np.logspace(-3, 1, 5)
         deg_range = np.linspace(2, 3, 2, dtype='int')
         cv = StratifiedKFold(n_splits=4, shuffle=False)
 
         # Apply a linear kernel
-        lin_param_grid = dict(C=C_range, kernel=['linear'])
-        lin_grid = GridSearchCV(SVC(), param_grid=lin_param_grid, cv=cv)
-        lin_grid.fit(train_data, train_labels)
+        lin_param_grid = dict(C=C_range, max_iter=[2000])  # , kernel=['linear'])
+        lin_grid = GridSearchCV(LinearSVC(), param_grid=lin_param_grid, cv=cv)
+        lin_grid.fit(train_data[0:datapoints, :], train_labels[0:datapoints])
         lin_params = list(lin_grid.best_params_.values())  # list([100, 'linear'])  #
 
+        ''' Commented out for speed
         # polynomial kernel
         poly_param_grid = dict(gamma=gamma_range, C=C_range, degree=deg_range, kernel=['poly'],
                                decision_function_shape=['ovr'])
         poly_grid = RandomizedSearchCV(SVC(), param_distributions=poly_param_grid, cv=cv, n_iter=10,
                                        return_train_score=1,
                                        n_jobs=-1)
-        poly_grid.fit(train_data, train_labels)  # kern: poly, gamma: 0.1, degree: 3, C: 10000
+        poly_grid.fit(train_data[0:datapoints, :], train_labels[0:datapoints])  # kern: poly, gamma: 0.1, degree: 3, C: 10000
         poly_params = list(
             poly_grid.best_params_.values())  # list(['poly', 10, 2.0, 'ovr', 10]) # list([10, 'linear'])  #
 
         # rbf kernel
         rbf_param_grid = dict(gamma=gamma_range, C=C_range, kernel=['rbf'], decision_function_shape=['ovr'])
-        rbf_grid = RandomizedSearchCV(SVC(), param_distributions=rbf_param_grid, cv=cv, n_iter=50, return_train_score=1)
-        rbf_grid.fit(train_data, train_labels)  # 0.01, 1000
-        rbf_params = list(rbf_grid.best_params_.values())  # list(['rbf', 0.001, 'ovr', 100.0])
+        rbf_grid = RandomizedSearchCV(SVC(), param_distributions=rbf_param_grid, cv=cv, n_iter=20, return_train_score=1)
+        rbf_grid.fit(train_data[0:datapoints, :], train_labels[0:datapoints])  # 0.01, 1000
+        rbf_params = list(rbf_grid.best_params_.values())  # list(['rbf', 0.001, 'ovr', 100.0])'''
         names = [
-            "Linear SVM",
-            "Poly SVM",
-            "RBF SVM"]
+            "Linear SVM"]  #,
+            # "Poly SVM",
+            # "RBF SVM"]
         classifiers = [
             SVC(kernel="linear", C=lin_params[0], decision_function_shape='ovr'),
-            SVC(kernel="rbf", gamma=rbf_params[1], C=rbf_params[3], decision_function_shape='ovr'),
-            SVC(kernel="poly", degree=poly_params[2], gamma=poly_params[1], C=poly_params[4],
-                decision_function_shape='ovr')
+            # SVC(kernel="rbf", gamma=rbf_params[1], C=rbf_params[3], decision_function_shape='ovr'),
+            # SVC(kernel="poly", degree=poly_params[2], gamma=poly_params[1], C=poly_params[4],
+            #     decision_function_shape='ovr')
         ]
 
         svm, score = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
