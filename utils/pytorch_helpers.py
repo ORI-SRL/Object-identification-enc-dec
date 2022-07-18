@@ -7,6 +7,7 @@ import random
 from sklearn.metrics import silhouette_score, silhouette_samples
 from sklearn import preprocessing
 from utils import silhouette
+import scipy.io
 
 
 def seed_experiment(seed):
@@ -184,7 +185,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
     return best_params, loss_dict
 
 
-def test_model(model, train_loader, test_loader, classes, show=True, compare=False):
+def test_model(model, train_loader, test_loader, classes, n_grasps, show=True, compare=False):
     model_name = model.__class__.__name__
     # print(model_name)
 
@@ -245,10 +246,11 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
     if show:
         # plot encoded data
         torch.Tensor.ndim = property(lambda self: len(self.shape))
-        x = encoded_test_out[:, 0].cpu()
-        y = encoded_test_out[:, 1].cpu()
-        x = x.detach().numpy()
-        y = y.detach().numpy()
+        x = encoded_test_out[:, 0].cpu().detach().numpy()
+        y = encoded_test_out[:, 1].cpu().detach().numpy()
+        scipy.io.savemat(f'./data/{model_name}_{n_grasps}_bottleneck.mat',
+                         {'Bottleneck_data': encoded_test_out.cpu().detach().numpy(),
+                          'Labels': test_labels_out})
         plt.figure()
 
         if encoded_test_out.shape[1] == 3:
@@ -276,7 +278,7 @@ def test_model(model, train_loader, test_loader, classes, show=True, compare=Fal
         plt.xlabel('Component 1')
         plt.ylabel('Component 2')
         plt.legend()
-        plt.suptitle("Bottleneck Data")
+        plt.suptitle(f"{n_grasps} Grasps Bottleneck Data")
         # plt.show()
 
         return encoded_train_out, train_labels_out, encoded_test_out, test_labels_out, -test_sil
