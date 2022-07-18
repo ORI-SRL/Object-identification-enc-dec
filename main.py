@@ -111,7 +111,7 @@ for ModelArchitecture in models:
             model.load_state_dict(torch.load(model_state))
             model.eval()
             train_data, train_labels, test_data, test_labels, silhouette_score = test_model(
-                model, train_loader, test_loader, classes, compare=False)
+                model, train_loader, test_loader, classes, num_grasps, compare=False)
 
             svm_params, svm_acc = svm_classifier(train_data.detach().numpy(), train_labels,
                                                  test_data.detach().numpy(), test_labels, num_grasps, learn=False)

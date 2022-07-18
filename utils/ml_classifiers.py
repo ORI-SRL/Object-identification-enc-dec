@@ -15,8 +15,8 @@ def svm_classifier(train_data, train_labels, test_data, test_labels, n_grasps, l
     # the poly kernel is slowest so use random search rather than grid search
     folder = './saved_model_states/ml_states/'
     state_file = f'{folder}{n_grasps}_grasps_svm_params.pt'
+    data_points = 1500
     if learn:
-        datapoints = 1500
         C_range = np.logspace(-3, 2, 6)
         gamma_range = np.logspace(-3, 1, 5)
         deg_range = np.linspace(2, 3, 2, dtype='int')
@@ -25,7 +25,7 @@ def svm_classifier(train_data, train_labels, test_data, test_labels, n_grasps, l
         # Apply a linear kernel
         lin_param_grid = dict(C=C_range, max_iter=[2000])  # , kernel=['linear'])
         lin_grid = GridSearchCV(LinearSVC(), param_grid=lin_param_grid, cv=cv)
-        lin_grid.fit(train_data[0:datapoints, :], train_labels[0:datapoints])
+        lin_grid.fit(train_data[0:data_points, :], train_labels[0:data_points])
         lin_params = list(lin_grid.best_params_.values())  # list([100, 'linear'])  #
 
         ''' Commented out for speed
@@ -35,14 +35,14 @@ def svm_classifier(train_data, train_labels, test_data, test_labels, n_grasps, l
         poly_grid = RandomizedSearchCV(SVC(), param_distributions=poly_param_grid, cv=cv, n_iter=10,
                                        return_train_score=1,
                                        n_jobs=-1)
-        poly_grid.fit(train_data[0:datapoints, :], train_labels[0:datapoints])  # kern: poly, gamma: 0.1, degree: 3, C: 10000
+        poly_grid.fit(train_data[0:data_points, :], train_labels[0:data_points])
         poly_params = list(
             poly_grid.best_params_.values())  # list(['poly', 10, 2.0, 'ovr', 10]) # list([10, 'linear'])  #
 
         # rbf kernel
         rbf_param_grid = dict(gamma=gamma_range, C=C_range, kernel=['rbf'], decision_function_shape=['ovr'])
         rbf_grid = RandomizedSearchCV(SVC(), param_distributions=rbf_param_grid, cv=cv, n_iter=20, return_train_score=1)
-        rbf_grid.fit(train_data[0:datapoints, :], train_labels[0:datapoints])  # 0.01, 1000
+        rbf_grid.fit(train_data[0:data_points, :], train_labels[0:data_points])  # 0.01, 1000
         rbf_params = list(rbf_grid.best_params_.values())  # list(['rbf', 0.001, 'ovr', 100.0])'''
         names = [
             "Linear SVM"]  #,
@@ -58,7 +58,7 @@ def svm_classifier(train_data, train_labels, test_data, test_labels, n_grasps, l
         svm, score = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
         svm = pickle.load(open(state_file, 'rb'))
-        svm.fit(train_data, train_labels)
+        svm.fit(train_data[0:data_points, :], train_labels[0:data_points])
         score = svm.score(test_data, test_labels)
         svm.predict(test_data)
         svm = svm
@@ -166,6 +166,7 @@ def plot_confusion(data, labels, model_fit, n_grasps):
     cm_display = ConfusionMatrixDisplay(cm, display_labels=unique_labels).plot()
     cm_display.ax_.set_title(f'{n_grasps} grasps - {model_fit.__class__.__name__}')
     fig = plt.figure()
+    fig.set_size_inches(8, 5)
     cm_display_percentages = sns.heatmap(cm / (len(labels) / len(unique_labels)),
                                          annot=True, fmt='.2%', cmap='Blues', xticklabels=unique_labels,
                                          yticklabels=unique_labels).plot()
