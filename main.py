@@ -16,8 +16,8 @@ import numpy as np
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/'
-n_grasps = [10, 7, 5, 3, 1]
-models = [TwoLayerWBatchNorm]  # TwoLayerConv, , TwoLayerWDropout
+n_grasps = [10, 7] # [10, 7, 5, 3, 1]
+models = [TwoLayerWDropoutWBatchNorm]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
@@ -29,10 +29,10 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-TRAIN_MODEL = False
-TEST_MODEL = True
+TRAIN_MODEL = True
+TEST_MODEL = False
 USE_PREVIOUS = True
-COMPARE_LOSSES = False
+COMPARE_LOSSES = True
 
 for ModelArchitecture in models:
     for num_grasps in n_grasps:
@@ -45,25 +45,19 @@ for ModelArchitecture in models:
                                         f'{DATA_FOLDER}shuffled_test_labels.npy',
                                         num_grasps, train_data.max_vals, train_data.min_vals,
                                         train=False, pre_sort=True)
+        validation_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_val_data.npy',
+                                              f'{DATA_FOLDER}shuffled_val_labels.npy',
+                                              num_grasps, train_data.max_vals, train_data.min_vals,
+                                              train=False, pre_sort=True)
 
         train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=0,
                                   shuffle=True)  # torch.from_numpy(train_data)
         test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0,
                                  shuffle=True)  # torch.from_numpy(test_data)
-        model = ModelArchitecture()
+        val_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0,
+                                shuffle=True)
 
-        if COMPARE_LOSSES:
-            print(f'{model.__class__.__name__}_{num_grasps}_grasps')
-            loss_file = f'{MODEL_SAVE_FOLDER}losses/{model.__class__.__name__}_{num_grasps}_losses.csv'
-            plot_silhouette(loss_file, model, num_grasps)
-            model_state = f'./saved_model_states/{model.__class__.__name__}_{num_grasps}grasps_model_state.pt'
-            model.load_state_dict(torch.load(model_state))
-            model.eval()
-            _, _, _, _, silhouette_score = test_model(
-                model, train_loader, test_loader, classes, compare=False)
-            plt.close('all')
-            sil_comparison_dict[
-                f'{model.__class__.__name__}_{num_grasps}'] = silhouette_score.cpu().detach().numpy().item()
+        model = ModelArchitecture()
 
         if TRAIN_MODEL:
 
@@ -111,7 +105,7 @@ for ModelArchitecture in models:
             model.load_state_dict(torch.load(model_state))
             model.eval()
             train_data, train_labels, test_data, test_labels, silhouette_score = test_model(
-                model, train_loader, test_loader, classes, num_grasps, compare=False)
+                model, train_loader, val_loader, classes, num_grasps, compare=False)
 
             svm_params, svm_acc = svm_classifier(train_data.detach().numpy(), train_labels,
                                                  test_data.detach().numpy(), test_labels, num_grasps, learn=False)
@@ -119,7 +113,8 @@ for ModelArchitecture in models:
                                                  test_data.detach().numpy(), test_labels, num_grasps, learn=False)
             tree_params, tree_acc = tree_searches(train_data.detach().numpy(), train_labels,
                                                   test_data.detach().numpy(), test_labels, num_grasps, learn=False)
-            print('svm accuracy: {:.4f}\t knn accuracy: {:.4f} \t tree accuracy: {:.4f}'.format(svm_acc, knn_acc, tree_acc))
+            print('svm accuracy: {:.4f}\t knn accuracy: {:.4f} \t tree accuracy: {:.4f}'.format(svm_acc, knn_acc,
+                                                                                                tree_acc))
             ml_dict[f'{model.__class__.__name__}_{num_grasps}_svm'] = svm_params
             ml_dict[f'{model.__class__.__name__}_{num_grasps}_knn'] = knn_params
             ml_dict[f'{model.__class__.__name__}_{num_grasps}_tree'] = tree_params
@@ -127,6 +122,19 @@ for ModelArchitecture in models:
                 pickle.dump(ml_dict, f)
             plt.close('all')
 if COMPARE_LOSSES:
+    for ModelArchitecture in models:
+        print(f'{model.__class__.__name__}_{num_grasps}_grasps')
+        loss_file = f'{MODEL_SAVE_FOLDER}losses/{model.__class__.__name__}'  # _{num_grasps}_losses.csv'
+        plot_silhouette(loss_file, model, n_grasps)
+        plt.show()
+        model_state = f'./saved_model_states/{model.__class__.__name__}_{num_grasps}grasps_model_state.pt'
+        model.load_state_dict(torch.load(model_state))
+        model.eval()
+        _, _, _, _, silhouette_score = test_model(
+            model, train_loader, test_loader, classes, num_grasps, compare=False)
+        plt.close('all')
+        sil_comparison_dict[
+            f'{model.__class__.__name__}_{num_grasps}'] = silhouette_score.cpu().detach().numpy().item()
     with open('./saved_model_states/silhouette_comparison.pkl', 'wb') as f:
         pickle.dump(sil_comparison_dict, f)
 print('finished')
