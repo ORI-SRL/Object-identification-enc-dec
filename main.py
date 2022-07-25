@@ -15,9 +15,9 @@ import numpy as np
 
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
-MODEL_SAVE_FOLDER = './saved_model_states/'
-n_grasps = [10, 7] # [10, 7, 5, 3, 1]
-models = [TwoLayerWDropoutWBatchNorm]  # TwoLayerConv, , TwoLayerWDropout
+MODEL_SAVE_FOLDER = './saved_model_states/new_state/'
+n_grasps = [10, 7, 5, 3, 1]  # [10, 7, 5, 3, 1]
+models = [TwoLayerWBatchNorm]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
@@ -29,9 +29,9 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-TRAIN_MODEL = True
-TEST_MODEL = False
-USE_PREVIOUS = True
+TRAIN_MODEL = False
+TEST_MODEL = True
+USE_PREVIOUS = False
 COMPARE_LOSSES = True
 
 for ModelArchitecture in models:
@@ -101,24 +101,24 @@ for ModelArchitecture in models:
 
             # os.listdir('./saved_model_states'):
             print(f'{model.__class__.__name__}_{num_grasps}_grasps')
-            model_state = f'./saved_model_states/{model.__class__.__name__}_{num_grasps}grasps_model_state.pt'
+            model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_{num_grasps}grasps_model_state.pt'
             model.load_state_dict(torch.load(model_state))
             model.eval()
             train_data, train_labels, test_data, test_labels, silhouette_score = test_model(
                 model, train_loader, val_loader, classes, num_grasps, compare=False)
 
-            svm_params, svm_acc = svm_classifier(train_data.detach().numpy(), train_labels,
-                                                 test_data.detach().numpy(), test_labels, num_grasps, learn=False)
+            # svm_params, svm_acc = svm_classifier(train_data.detach().numpy(), train_labels,
+            #                                     test_data.detach().numpy(), test_labels, num_grasps, learn=False)
             knn_params, knn_acc = knn_classifier(train_data.detach().numpy(), train_labels,
-                                                 test_data.detach().numpy(), test_labels, num_grasps, learn=False)
+                                                 test_data.detach().numpy(), test_labels, num_grasps, learn=True)
             tree_params, tree_acc = tree_searches(train_data.detach().numpy(), train_labels,
-                                                  test_data.detach().numpy(), test_labels, num_grasps, learn=False)
-            print('svm accuracy: {:.4f}\t knn accuracy: {:.4f} \t tree accuracy: {:.4f}'.format(svm_acc, knn_acc,
-                                                                                                tree_acc))
-            ml_dict[f'{model.__class__.__name__}_{num_grasps}_svm'] = svm_params
+                                                  test_data.detach().numpy(), test_labels, num_grasps, learn=True)
+            print('knn accuracy: {:.4f} \t tree accuracy: {:.4f}'.format(knn_acc,
+                                                                         tree_acc))  # svm accuracy: {:.4f}\t svm_acc,
+            # ml_dict[f'{model.__class__.__name__}_{num_grasps}_svm'] = svm_params
             ml_dict[f'{model.__class__.__name__}_{num_grasps}_knn'] = knn_params
             ml_dict[f'{model.__class__.__name__}_{num_grasps}_tree'] = tree_params
-            with open('./saved_model_states/classifier_comparison.pkl', 'wb') as f:
+            with open(f'./{MODEL_SAVE_FOLDER}classifier_comparison.pkl', 'wb') as f:
                 pickle.dump(ml_dict, f)
             plt.close('all')
 if COMPARE_LOSSES:

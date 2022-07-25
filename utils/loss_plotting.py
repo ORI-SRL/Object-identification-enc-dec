@@ -38,14 +38,16 @@ def plot_silhouette(file_path, model, n_grasps):
             # 'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_sil_out
             train_loss = loss_dict['training']
             test_loss = loss_dict['testing']
-            silhouette_score = loss_dict['training_silhouette']
-            max_silhouette = max(silhouette_score)
-            max_sil_idx = np.argmax(silhouette_score)
+            train_sil_score = loss_dict['training_silhouette']
+            test_sil_score = loss_dict['testing_silhouette']
+            max_silhouette = max(test_sil_score)
+            max_sil_idx = np.argmax(test_sil_score)
 
             ax1.plot(train_loss, label=f'{num_grasps} Grasps Training Losses')
             ax1.plot(test_loss, label=f'{num_grasps} Grasps Validation Losses')
             ax1.legend()
-            ax2.plot(silhouette_score, label=f'{num_grasps} Grasps Silhouette Score')
+            ax2.plot(train_sil_score, label=f'{num_grasps} Grasps Training Silhouette Score')
+            ax2.plot(test_sil_score, label=f'{num_grasps} Grasps Testing Silhouette Score')
             ax2.scatter(max_sil_idx, max_silhouette)
             ax2.legend()
             # fig.suptitle('Three Layer Convolution with Batch Norm, Losses and Silhouette Score')
