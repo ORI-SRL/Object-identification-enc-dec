@@ -16,6 +16,8 @@ def plot_silhouette(file_path, model, n_grasps):
     ax2.set_title('Silhouette score')
     ax2.set_xlabel('Epoch')
     ax2.set_ylabel('Silhouette score')
+    colours = ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8']
+    cIdx = 0
 
     for num_grasps in n_grasps:
         file_name = f'{file_path}_{num_grasps}_losses.csv'
@@ -40,16 +42,19 @@ def plot_silhouette(file_path, model, n_grasps):
             test_loss = loss_dict['testing']
             train_sil_score = loss_dict['training_silhouette']
             test_sil_score = loss_dict['testing_silhouette']
+            epochs = np.linspace(1, len(train_loss), len(train_loss))
             max_silhouette = max(test_sil_score)
             max_sil_idx = np.argmax(test_sil_score)
 
-            ax1.plot(train_loss, label=f'{num_grasps} Grasps Training Losses')
-            ax1.plot(test_loss, label=f'{num_grasps} Grasps Validation Losses')
+            ax1.plot(epochs, train_loss,  '--', color=colours[cIdx], label=f'{num_grasps} Grasps Training')
+            ax1.plot(epochs, test_loss, '-', color=colours[cIdx], label=f'{num_grasps} Grasps Validation')
+            cIdx += 1
             ax1.legend()
-            ax2.plot(train_sil_score, label=f'{num_grasps} Grasps Training Silhouette Score')
-            ax2.plot(test_sil_score, label=f'{num_grasps} Grasps Testing Silhouette Score')
-            ax2.scatter(max_sil_idx, max_silhouette)
-            ax2.legend()
+            ax2.plot(epochs, train_sil_score, '--', color=colours[cIdx], label=f'{num_grasps} Grasps Training')
+            ax2.plot(epochs, test_sil_score, '-', color=colours[cIdx],  label=f'{num_grasps} Grasps Testing')
+            ax2.scatter(max_sil_idx, max_silhouette, color=colours[cIdx])
+            ax2.scatter(max_sil_idx, max_silhouette, color=colours[cIdx])
+            # ax2.legend()
             # fig.suptitle('Three Layer Convolution with Batch Norm, Losses and Silhouette Score')
             # plt.show()
             fig = plt.gcf()
