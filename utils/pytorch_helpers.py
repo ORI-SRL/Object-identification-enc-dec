@@ -156,7 +156,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
         torch.save(best_params, model_file)
         loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_sil_out}
         # open file for writing, "w" is writing
-        w = csv.writer(open(f'./saved_model_states/{model.__class__.__name__}_{n_grasps}_losses_failed.pt', 'w'))
+        w = csv.writer(open(f'{save_folder}{model.__class__.__name__}_{n_grasps}_losses_failed.csv', 'w'))
         # loop over dictionary keys and values
         for key, val in loss_dict.items():
             # write every key and value to file
@@ -173,7 +173,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
         model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state.pt'
         torch.save(best_params, model_file)
         # open file for writing, "w" is writing
-        w = csv.writer(open(f'./saved_model_states/new_state/{model.__class__.__name__}_{n_grasps}_losses.pt', 'w'))
+        w = csv.writer(open(f'{save_folder}{model.__class__.__name__}_{n_grasps}_losses.csv', 'w'))
         # loop over dictionary keys and values
         for key, val in loss_dict.items():
             # write every key and value to file
