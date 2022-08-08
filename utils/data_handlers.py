@@ -8,7 +8,7 @@ class ObjectGraspsDataset(Dataset):
     """Object Grasps Dataset"""
 
     def __init__(self, data_array_file, labels_file, n_grasps, data_max=None, data_min=None, transform=None,
-                 train: bool = True, pre_sort=False):
+                 train: bool = True, pre_sort=False, pad_zero=True):
         """
         Args:
             array_file (string): Path to the saved ndarray file with grasp raw data.
@@ -18,7 +18,7 @@ class ObjectGraspsDataset(Dataset):
 
         input_data = np.load(data_array_file)
         input_targets = np.load(labels_file)
-        shuffled_data = np.empty((1, 1, 10, 19))
+        shuffled_data = np.empty((0, 1, 10, 19))
         shuffled_labels = []
         labels = list(set(input_targets))
         # reshape data to align sensors but maintain label for each grasp
@@ -29,7 +29,16 @@ class ObjectGraspsDataset(Dataset):
             # else:
             dim_len = int(np.floor(len(d_label) / n_grasps))
             d_shuffled = d_label[0:dim_len * n_grasps, :].reshape((-1, 1, n_grasps, 19))
-            d_shuffled = np.pad(d_shuffled, ((0, 0), (0, 0), (0, 10 - n_grasps), (0, 0)))
+            if pad_zero:
+                d_shuffled = np.pad(d_shuffled, ((0, 0), (0, 0), (0, 10 - n_grasps), (0, 0)))
+            else:
+                pad_array = np.empty((len(d_shuffled), 1, 10-n_grasps, 19))
+                for batch in range(len(d_shuffled)):
+                    padding_idx = np.random.randint(n_grasps, size=10-n_grasps)
+                    for idx in range(len(padding_idx)):
+                        padding_row = d_shuffled[batch, :, padding_idx[idx], :]
+                        pad_array[batch, :, idx, :] = padding_row
+                d_shuffled = np.append(d_shuffled, pad_array, axis=2)
             shuffled_data = np.append(shuffled_data, d_shuffled, axis=0)
             l_shuffled = [label] * d_shuffled.shape[0]
             shuffled_labels.extend(l_shuffled)
