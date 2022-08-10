@@ -5,7 +5,7 @@ import os
 from os.path import exists
 import csv
 import pickle
-from utils.pytorch_helpers import learn_model, test_model, seed_experiment
+from utils.pytorch_helpers import learn_iter_model, learn_model, test_model, seed_experiment
 from utils.data_handlers import ObjectGraspsDataset
 from torch.utils.data import DataLoader
 from utils.networks import *
@@ -15,9 +15,9 @@ import numpy as np
 
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
-MODEL_SAVE_FOLDER = './saved_model_states/row_padded/'
+MODEL_SAVE_FOLDER = './saved_model_states/iterative/'
 n_grasps = [5]  # [10, 7, 5, 3, 1]
-models = [TwoLayerWBatchNorm]  # TwoLayerConv, , TwoLayerWDropout
+models = [IterativeFFNN]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
@@ -30,25 +30,36 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 batch_size = 32
 
 TRAIN_MODEL = True
-TEST_MODEL = True
+TEST_MODEL = False
 USE_PREVIOUS = True
 COMPARE_LOSSES = False
 
 for ModelArchitecture in models:
     for num_grasps in n_grasps:
 
+        model = ModelArchitecture()
+
         # load grasp dataset into train and test
         train_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_train_data.npy',  # 'shuffled_data_11_03_22.npy'
                                          f'{DATA_FOLDER}shuffled_train_labels.npy',  # 'labels_data_11_03_22.npy'
-                                         num_grasps, train=True, pre_sort=True, pad_zero=False)
+                                         num_grasps, train=True, pre_sort=True, pad_zero=True)
         test_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_test_data.npy',
                                         f'{DATA_FOLDER}shuffled_test_labels.npy',
                                         num_grasps, train_data.max_vals, train_data.min_vals,
-                                        train=False, pre_sort=True, pad_zero=False)
+                                        train=False, pre_sort=True, pad_zero=True)
         validation_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_val_data.npy',
                                               f'{DATA_FOLDER}shuffled_val_labels.npy',
                                               num_grasps, train_data.max_vals, train_data.min_vals,
-                                              train=False, pre_sort=True, pad_zero=False)
+                                              train=False, pre_sort=True, pad_zero=True)
+
+        if model.__class__.__name__ == 'IterativeFFNN':
+            train_data.data = train_data.data.reshape(train_data.data.size(0), train_data.data.size(2),
+                                                      train_data.data.size(3))
+            test_data.data = test_data.data.reshape(test_data.data.size(0), test_data.data.size(2),
+                                                    test_data.data.size(3))
+            validation_data.data = validation_data.data.reshape(validation_data.data.size(0),
+                                                                validation_data.data.size(2),
+                                                                validation_data.data.size(3))
 
         train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=0,
                                   shuffle=True)  # torch.from_numpy(train_data)
@@ -56,8 +67,6 @@ for ModelArchitecture in models:
                                  shuffle=True)  # torch.from_numpy(test_data)
         val_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0,
                                 shuffle=True)
-
-        model = ModelArchitecture()
 
         if TRAIN_MODEL:
 
@@ -68,18 +77,27 @@ for ModelArchitecture in models:
                 if exists(model_state):
                     model.load_state_dict(torch.load(model_state))
             # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
-            criterion = nn.MSELoss()
+            criterion = nn.CrossEntropyLoss()
             # Optimizer
             optimizer = torch.optim.Adam(model.parameters(), lr=5e-3)
 
             print(model)
-
-            batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion, num_grasps,
-                                                     n_epochs=1500,
-                                                     max_patience=50,
-                                                     save_folder=MODEL_SAVE_FOLDER,
-                                                     save=True,
-                                                     show=True)
+            if model.__class__.__name__ == 'IterativeFFNN':
+                batch_params, batch_losses = learn_iter_model(model, train_loader, test_loader, optimizer, criterion,
+                                                              num_grasps, classes,
+                                                              n_epochs=1500,
+                                                              max_patience=50,
+                                                              save_folder=MODEL_SAVE_FOLDER,
+                                                              save=True,
+                                                              show=True)
+            else:
+                batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
+                                                         num_grasps,
+                                                         n_epochs=1500,
+                                                         max_patience=50,
+                                                         save_folder=MODEL_SAVE_FOLDER,
+                                                         save=True,
+                                                         show=True)
 
             loss_comparison_dict[model.__class__.__name__] = batch_losses
 
@@ -98,24 +116,23 @@ for ModelArchitecture in models:
             # plt.show()
 
         if TEST_MODEL:
-
             # os.listdir('./saved_model_states'):
             print(f'{model.__class__.__name__}_{num_grasps}_grasps')
             model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_{num_grasps}grasps_model_state.pt'
             model.load_state_dict(torch.load(model_state))
             model.eval()
             train_data, train_labels, test_data, test_labels, silhouette_score = test_model(
-                model, train_loader, val_loader, classes, num_grasps, compare=False)
+                model, train_loader, test_loader, classes, num_grasps, compare=False)
 
-            svm_params, svm_acc = svm_classifier(train_data.detach().numpy(), train_labels,
-                                                test_data.detach().numpy(), test_labels, num_grasps, learn=False)
+            # svm_params, svm_acc = svm_classifier(train_data.detach().numpy(), train_labels,
+            #                                     test_data.detach().numpy(), test_labels, num_grasps, learn=False)
             knn_params, knn_acc = knn_classifier(train_data.detach().numpy(), train_labels,
                                                  test_data.detach().numpy(), test_labels, num_grasps, learn=False)
             tree_params, tree_acc = tree_searches(train_data.detach().numpy(), train_labels,
                                                   test_data.detach().numpy(), test_labels, num_grasps, learn=False)
-            print('svm accuracy: {:.4f}\t, knn accuracy: {:.4f} \t tree accuracy: {:.4f}'.format(
-                svm_acc, knn_acc, tree_acc))  #
-            ml_dict[f'{model.__class__.__name__}_{num_grasps}_svm'] = svm_params
+            print('knn accuracy: {:.4f} \t tree accuracy: {:.4f}'.format(
+                knn_acc, tree_acc))  # 'svm accuracy: {:.4f}\t,
+            # ml_dict[f'{model.__class__.__name__}_{num_grasps}_svm'] = svm_params
             ml_dict[f'{model.__class__.__name__}_{num_grasps}_knn'] = knn_params
             ml_dict[f'{model.__class__.__name__}_{num_grasps}_tree'] = tree_params
             with open(f'./{MODEL_SAVE_FOLDER}classifier_comparison.pkl', 'wb') as f:

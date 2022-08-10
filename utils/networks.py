@@ -2,6 +2,42 @@ import torch
 import torch.nn as nn
 
 
+class IterativeFFNN(nn.Module):
+
+    def __init__(self):
+        super(IterativeFFNN, self).__init__()
+
+        self.fc1 = nn.Linear(26, 200)
+        self.fc2 = nn.Linear(200, 200)
+        self.fc3 = nn.Linear(200, 100)
+        self.fc4 = nn.Linear(100, 7)
+        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
+
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x, pred_in):
+
+        for j in range(x.size(-2)):
+            row = x[:, j, :]
+
+            if torch.sum(row) != 0:
+                if j == 0:
+                    row = torch.cat((row, pred_in), dim=-1)  # concatenate the data with the predictions
+                else:
+                    row = torch.cat((row, output), dim=-1)
+                h1 = self.fc1(row)
+                relu = self.relu(h1)
+                h2 = self.fc2(relu)
+                relu = self.relu(h2)
+                h3 = self.fc3(relu)
+                relu = self.relu(h3)
+                h_out = self.fc4(relu)
+                tanh = self.tanh(h_out)
+                output = self.softmax(tanh)
+        return output
+
+
 class TwoLayerConv(nn.Module):
 
     def __init__(self):

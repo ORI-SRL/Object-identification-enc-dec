@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 import csv
 import matplotlib.pyplot as plt
 import copy
@@ -26,6 +27,103 @@ def get_device():
     else:
         device = 'cpu'
     return device
+
+
+def encode_labels(labels, classes):
+    # encoded_label_frame = torch.zeros((len(labels), 1, 7), dtype=torch.float)  #
+    encoded_label_frame = torch.zeros((len(labels)), dtype=torch.long)  #
+    i = 0
+    for label in labels:
+        # encoded_label_frame[i, 0, classes.index(label)] = 1  # = 1
+        encoded_label_frame[i] = classes.index(label)
+        i += 1
+    return encoded_label_frame
+
+
+def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, classes, n_epochs=50,
+                     max_patience=10, save_folder='./', save=True, show=True):
+    model_name = model.__class__.__name__
+    print(f'{model_name} {n_grasps} grasps')
+
+    device = get_device()
+    print(device)
+    model.to(device)
+
+    # Epochs
+    train_loss_out = []
+    test_loss_out = []
+    best_loss_dict = {'test_loss': None}
+
+    patience = 0
+    best_loss = None
+    best_params = None
+    try:
+        for epoch in range(1, n_epochs + 1):
+            # monitor training loss
+            train_loss = 0.0
+            test_loss = 0.0
+            cycle = 0
+            frame_accuracy = 0.0
+            train_accuracy = 0.0
+            test_accuracy = 0.0
+
+            # Training
+            model.train()
+            for data in train_loader:
+                frame = data["data"].to(device)  # .reshape(32, 10, 19)
+                frame_labels = data["labels"]
+                enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
+                pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
+
+                optimizer.zero_grad()
+                outputs = model(frame, pred_in)
+
+                loss = criterion(outputs, enc_lab)
+
+                loss.backward()  # loss +
+                optimizer.step()
+                train_loss += loss.item()
+                _, inds = outputs.max(dim=1)
+                frame_accuracy = torch.sum(inds == enc_lab) / len(inds)
+                train_accuracy += frame_accuracy
+                cycle += 1
+            train_loss = train_loss / len(train_loader)
+            train_accuracy = train_accuracy / len(train_loader)
+            train_loss_out.append(train_loss)
+
+            model.eval()
+            for data in test_loader:
+                # take the next frame from the data_loader and process it through the model
+                frame = data["data"].to(device)
+                frame_labels = data["labels"]
+                enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
+                pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
+
+                outputs = model(frame, pred_in)
+                loss2 = criterion(outputs, enc_lab)
+
+                test_loss += loss2.item()
+                _, inds = outputs.max(dim=1)
+                frame_accuracy = torch.sum(inds == enc_lab) / len(inds)
+                test_accuracy += frame_accuracy
+            test_accuracy = test_accuracy / len(test_loader)
+            test_loss = test_loss / len(test_loader)
+
+            test_loss_out.append(test_loss)
+
+            print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \t Training accuracy {:.2f} '
+                  '\t Testing accuracy {:.2f}'
+                  .format(epoch, train_loss, test_loss, train_accuracy, test_accuracy))
+            # empty cache to prevent overusing the memory
+            # torch.cuda.empty_cache()
+
+    except Exception as inst:
+        print(type(inst))  # the exception instance
+        print(inst.args)  # arguments stored in .args
+        print(inst)  # __str__ allows args to be printed directly,
+        torch.cuda.memory_snapshot()
+        model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state_failed.pt'
+        torch.save(best_params, model_file)
 
 
 def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
@@ -61,6 +159,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
             for data in train_loader:
                 frame = data["data"].to(device)
                 frame_labels = data["labels"]
+                pred_in = torch.full((frame.size(0), 1, 7), 1 / 7).to(device)
 
                 optimizer.zero_grad()
                 outputs, embeddings = model(frame)
@@ -127,7 +226,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
                 break
             elif best_loss_dict['test_loss'] is None or test_loss < best_loss_dict['test_loss']:
 
-                best_loss_dict = {'train_loss': train_loss, 'test_loss': test_loss,  'train_sil': train_sil,
+                best_loss_dict = {'train_loss': train_loss, 'test_loss': test_loss, 'train_sil': train_sil,
                                   'test_sil': test_sil}
                 patience = 0
                 best_params = copy.copy(model.state_dict())
