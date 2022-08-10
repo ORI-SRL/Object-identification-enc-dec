@@ -52,11 +52,12 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
     # Epochs
     train_loss_out = []
     test_loss_out = []
-    best_loss_dict = {'test_loss': None}
 
     patience = 0
-    best_loss = None
+    best_loss_dict = {'train_loss': None, 'test_loss': None, 'train_acc': None,
+                      'test_acc': None, 'epoch': None}
     best_params = None
+
     try:
         for epoch in range(1, n_epochs + 1):
             # monitor training loss
@@ -117,6 +118,20 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
             # empty cache to prevent overusing the memory
             # torch.cuda.empty_cache()
 
+            # Early Stopping Logic
+            if best_loss_dict['test_loss'] is None or test_loss < best_loss_dict['test_loss']:
+
+                best_loss_dict = {'train_loss': train_loss, 'test_loss': test_loss, 'train_acc': train_accuracy,
+                                  'test_acc': test_accuracy, 'epoch': epoch}
+                patience = 0
+                best_params = copy.copy(model.state_dict())
+            else:
+                patience += 1
+                if patience >= max_patience:
+                    print(f'Early stopping: training terminated at epoch {epoch} due to es, '
+                          f'patience exceeded at {max_patience}')
+                    break
+
     except Exception as inst:
         print(type(inst))  # the exception instance
         print(inst.args)  # arguments stored in .args
@@ -124,6 +139,32 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
         torch.cuda.memory_snapshot()
         model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state_failed.pt'
         torch.save(best_params, model_file)
+
+    print('Best parameters at:'
+          'Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tTraining accuracy: {:.2f} '
+          '\tTesting accuracy {:.2f}'
+          .format(best_loss_dict['epoch'], best_loss_dict['train_loss'], best_loss_dict['test_loss'],
+                  best_loss_dict['train_acc'], best_loss_dict['test_acc']))
+
+    if save and best_params is not None:
+        model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state.pt'
+        torch.save(best_params, model_file)
+        # open file for writing, "w" is writing
+        w = csv.writer(open(f'{save_folder}{model.__class__.__name__}_{n_grasps}_losses.csv', 'w'))
+        # loop over dictionary keys and values
+        for key, val in best_loss_dict.items():
+            # write every key and value to file
+            w.writerow([key, val])
+
+    if show:
+        # plot model losses
+        x = list(range(1, len(test_loss_out) + 1))
+        plt.plot(x, train_loss_out, label=model_name + "Training loss")
+        plt.plot(x, test_loss_out, label=model_name + "Testing loss")
+        plt.xlabel('epoch #')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.show()
 
 
 def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
