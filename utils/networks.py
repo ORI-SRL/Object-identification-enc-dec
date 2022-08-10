@@ -33,8 +33,8 @@ class IterativeFFNN(nn.Module):
                 h3 = self.fc3(relu)
                 relu = self.relu(h3)
                 h_out = self.fc4(relu)
-                tanh = self.tanh(h_out)
-                output = self.softmax(tanh)
+                output = self.tanh(h_out)
+                # output = self.softmax(final)
         return output
 
 
