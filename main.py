@@ -16,7 +16,7 @@ import numpy as np
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/'
-n_grasps = [5]  # [10, 7, 5, 3, 1]
+n_grasps = [10]  # [10, 7, 5, 3, 1]
 models = [IterativeFFNN]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}
@@ -40,17 +40,15 @@ for ModelArchitecture in models:
         model = ModelArchitecture()
 
         # load grasp dataset into train and test
-        train_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_train_data.npy',  # 'shuffled_data_11_03_22.npy'
-                                         f'{DATA_FOLDER}shuffled_train_labels.npy',  # 'labels_data_11_03_22.npy'
-                                         num_grasps, train=True, pre_sort=True, pad_zero=True)
+        train_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_train_data.npy',
+                                         f'{DATA_FOLDER}shuffled_train_labels.npy', num_grasps, train=True,
+                                         pre_sort=True, random_pad=True)
         test_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_test_data.npy',
-                                        f'{DATA_FOLDER}shuffled_test_labels.npy',
-                                        num_grasps, train_data.max_vals, train_data.min_vals,
-                                        train=False, pre_sort=True, pad_zero=True)
+                                        f'{DATA_FOLDER}shuffled_test_labels.npy', num_grasps, train_data.max_vals,
+                                        train_data.min_vals, train=False, pre_sort=True, random_pad=True)
         validation_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_val_data.npy',
-                                              f'{DATA_FOLDER}shuffled_val_labels.npy',
-                                              num_grasps, train_data.max_vals, train_data.min_vals,
-                                              train=False, pre_sort=True, pad_zero=True)
+                                              f'{DATA_FOLDER}shuffled_val_labels.npy', num_grasps, train_data.max_vals,
+                                              train_data.min_vals, train=False, pre_sort=True, random_pad=True)
 
         if model.__class__.__name__ == 'IterativeFFNN':
             train_data.data = train_data.data.reshape(train_data.data.size(0), train_data.data.size(2),
@@ -79,7 +77,7 @@ for ModelArchitecture in models:
             # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
             criterion = nn.CrossEntropyLoss()
             # Optimizer
-            optimizer = torch.optim.Adam(model.parameters(), lr=5e-3)
+            optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
 
             print(model)
             if model.__class__.__name__ == 'IterativeFFNN':
