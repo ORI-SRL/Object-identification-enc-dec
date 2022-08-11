@@ -52,6 +52,8 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
     # Epochs
     train_loss_out = []
     test_loss_out = []
+    train_acc_out = []
+    test_acc_out = []
 
     patience = 0
     best_loss_dict = {'train_loss': None, 'test_loss': None, 'train_acc': None,
@@ -73,6 +75,10 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
             for data in train_loader:
                 frame = data["data"].to(device)  # .reshape(32, 10, 19)
                 frame_labels = data["labels"]
+
+                # randomly switch in zero rows to vary the number of grasps being identified
+                padded_rows = np.random.randint(1, n_grasps)
+                frame[:, padded_rows:, :] = 0
                 enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
                 pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
@@ -85,18 +91,22 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                 optimizer.step()
                 train_loss += loss.item()
                 _, inds = outputs.max(dim=1)
-                frame_accuracy = torch.sum(inds == enc_lab) / len(inds)
+                frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
                 train_accuracy += frame_accuracy
                 cycle += 1
             train_loss = train_loss / len(train_loader)
             train_accuracy = train_accuracy / len(train_loader)
             train_loss_out.append(train_loss)
+            train_acc_out.append(train_accuracy)
 
             model.eval()
             for data in test_loader:
                 # take the next frame from the data_loader and process it through the model
                 frame = data["data"].to(device)
                 frame_labels = data["labels"]
+                # randomly switch in zero rows to vary the number of grasps being identified
+                padded_rows = np.random.randint(1, n_grasps)
+                frame[:, padded_rows:, :] = 0
                 enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
                 pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
@@ -105,14 +115,14 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
 
                 test_loss += loss2.item()
                 _, inds = outputs.max(dim=1)
-                frame_accuracy = torch.sum(inds == enc_lab) / len(inds)
+                frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
                 test_accuracy += frame_accuracy
             test_accuracy = test_accuracy / len(test_loader)
             test_loss = test_loss / len(test_loader)
-
             test_loss_out.append(test_loss)
+            test_acc_out.append(test_accuracy)
 
-            print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \t Training accuracy {:.2f} '
+            print('Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \t Training accuracy {:.2f} '
                   '\t Testing accuracy {:.2f}'
                   .format(epoch, train_loss, test_loss, train_accuracy, test_accuracy))
             # empty cache to prevent overusing the memory
@@ -132,6 +142,9 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                           f'patience exceeded at {max_patience}')
                     break
 
+            loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_acc_out,
+                         'testing_silhouette': test_acc_out}
+
     except Exception as inst:
         print(type(inst))  # the exception instance
         print(inst.args)  # arguments stored in .args
@@ -141,7 +154,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
         torch.save(best_params, model_file)
 
     print('Best parameters at:'
-          'Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tTraining accuracy: {:.2f} '
+          'Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \tTraining accuracy: {:.2f} '
           '\tTesting accuracy {:.2f}'
           .format(best_loss_dict['epoch'], best_loss_dict['train_loss'], best_loss_dict['test_loss'],
                   best_loss_dict['train_acc'], best_loss_dict['test_acc']))
@@ -152,20 +165,26 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
         # open file for writing, "w" is writing
         w = csv.writer(open(f'{save_folder}{model.__class__.__name__}_{n_grasps}_losses.csv', 'w'))
         # loop over dictionary keys and values
-        for key, val in best_loss_dict.items():
+        for key, val in loss_dict.items():
             # write every key and value to file
             w.writerow([key, val])
 
     if show:
         # plot model losses
+        fig, [ax1, ax2] = plt.subplots(1, 2)
         x = list(range(1, len(test_loss_out) + 1))
-        plt.plot(x, train_loss_out, label=model_name + "Training loss")
-        plt.plot(x, test_loss_out, label=model_name + "Testing loss")
-        plt.xlabel('epoch #')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.show()
+        ax1.plot(x, train_loss_out, label="Training loss")
+        ax1.plot(x, test_loss_out, label="Testing loss")
+        ax1.set_xlabel('epoch #')
+        ax1.set_ylabel('Loss')
+        ax1.legend()
+        ax2.plot(train_acc_out, label="Training accuracy")
+        ax2.plot(test_acc_out, label="Testing accuracy")
+        ax2.set_xlabel('epoch #')
+        ax2.set_ylabel('Accuracy')
+        ax2.legend()
 
+    return best_params, best_loss_dict
 
 def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
                 save_folder='./', save=True, show=True):
