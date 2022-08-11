@@ -31,7 +31,7 @@ batch_size = 32
 
 TRAIN_MODEL = True
 TEST_MODEL = False
-USE_PREVIOUS = True
+USE_PREVIOUS = False
 COMPARE_LOSSES = False
 
 for ModelArchitecture in models:
@@ -42,13 +42,13 @@ for ModelArchitecture in models:
         # load grasp dataset into train and test
         train_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_train_data.npy',
                                          f'{DATA_FOLDER}shuffled_train_labels.npy', num_grasps, train=True,
-                                         pre_sort=True, random_pad=True)
+                                         pre_sort=True, random_pad=False)
         test_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_test_data.npy',
                                         f'{DATA_FOLDER}shuffled_test_labels.npy', num_grasps, train_data.max_vals,
-                                        train_data.min_vals, train=False, pre_sort=True, random_pad=True)
+                                        train_data.min_vals, train=False, pre_sort=True, random_pad=False)
         validation_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_val_data.npy',
                                               f'{DATA_FOLDER}shuffled_val_labels.npy', num_grasps, train_data.max_vals,
-                                              train_data.min_vals, train=False, pre_sort=True, random_pad=True)
+                                              train_data.min_vals, train=False, pre_sort=True, random_pad=False)
 
         if model.__class__.__name__ == 'IterativeFFNN':
             train_data.data = train_data.data.reshape(train_data.data.size(0), train_data.data.size(2),
@@ -84,7 +84,7 @@ for ModelArchitecture in models:
                 batch_params, batch_losses = learn_iter_model(model, train_loader, test_loader, optimizer, criterion,
                                                               num_grasps, classes,
                                                               n_epochs=1500,
-                                                              max_patience=50,
+                                                              max_patience=100,
                                                               save_folder=MODEL_SAVE_FOLDER,
                                                               save=True,
                                                               show=True)

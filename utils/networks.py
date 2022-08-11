@@ -25,7 +25,7 @@ class IterativeFFNN(nn.Module):
                 if j == 0:
                     row = torch.cat((row, pred_in), dim=-1)  # concatenate the data with the predictions
                 else:
-                    row = torch.cat((row, output), dim=-1)
+                    row = torch.cat((row, next_pred), dim=-1)
                 h1 = self.fc1(row)
                 relu = self.relu(h1)
                 h2 = self.fc2(relu)
@@ -34,7 +34,7 @@ class IterativeFFNN(nn.Module):
                 relu = self.relu(h3)
                 h_out = self.fc4(relu)
                 output = self.tanh(h_out)
-                # output = self.softmax(final)
+                next_pred = self.softmax(output)
         return output
 
 
