@@ -99,20 +99,6 @@ for ModelArchitecture in models:
 
             loss_comparison_dict[model.__class__.__name__] = batch_losses
 
-            # plot stuff to choose model
-
-            # fig = plt.figure()
-            # ax = fig.add_subplot(111)
-            # plt.title('Model Comparison')
-
-            # for key in loss_comparison_dict.keys():
-            #     plt.plot(loss_comparison_dict[key], label=key)
-
-            # plt.xlabel('epochs')
-            # plt.ylabel('test loss')
-            # plt.legend()
-            # plt.show()
-
         if TEST_MODEL:
             # os.listdir('./saved_model_states'):
             print(f'{model.__class__.__name__}_{num_grasps}_grasps')

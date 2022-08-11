@@ -5,7 +5,7 @@ import csv
 import matplotlib.pyplot as plt
 import copy
 import random
-from sklearn.metrics import silhouette_score, silhouette_samples
+# from sklearn.metrics import silhouette_score, silhouette_samples
 from sklearn import preprocessing
 from utils import silhouette
 import scipy.io
@@ -66,7 +66,6 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
             train_loss = 0.0
             test_loss = 0.0
             cycle = 0
-            frame_accuracy = 0.0
             train_accuracy = 0.0
             test_accuracy = 0.0
 
@@ -186,6 +185,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
 
     return best_params, best_loss_dict
 
+
 def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
                 save_folder='./', save=True, show=True):
     model_name = model.__class__.__name__
@@ -219,7 +219,6 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
             for data in train_loader:
                 frame = data["data"].to(device)
                 frame_labels = data["labels"]
-                pred_in = torch.full((frame.size(0), 1, 7), 1 / 7).to(device)
 
                 optimizer.zero_grad()
                 outputs, embeddings = model(frame)
@@ -369,9 +368,9 @@ def test_model(model, train_loader, test_loader, classes, n_grasps, show=True, c
         plt.figure()
         rows = 10
         columns = 2
-        nPlots = int(rows * columns)
+        n_plots = int(rows * columns)
         plt.suptitle("Comparison of input and output data from model")
-        grid = plt.GridSpec(rows, columns, wspace=0.25, hspace=1)
+        plt.GridSpec(rows, columns, wspace=0.25, hspace=1)
         plt.show()
 
     for data in train_loader:
@@ -384,7 +383,7 @@ def test_model(model, train_loader, test_loader, classes, n_grasps, show=True, c
         if compare:
             y_max = torch.max(outputs, frame).max()
             y_max = y_max.cpu().detach().numpy()
-            for i in range(int(nPlots / 2)):
+            for i in range(int(n_plots / 2)):
                 ticks = np.linspace(1, 19, 19)
                 exec(f"plt.subplot(grid{[2 * i]})")
                 plt.cla()
