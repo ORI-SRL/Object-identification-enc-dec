@@ -125,7 +125,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                   '\t Testing accuracy {:.2f}'
                   .format(epoch, train_loss, test_loss, train_accuracy, test_accuracy))
             # empty cache to prevent overusing the memory
-            # torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
 
             # Early Stopping Logic
             if best_loss_dict['test_loss'] is None or test_loss < best_loss_dict['test_loss']:
@@ -184,6 +184,41 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
         ax2.legend()
 
     return best_params, best_loss_dict
+
+
+def test_iter_model(model, train_loader, test_loader, classes, show=True):
+    model_name = model.__class__.__name__
+    print(f'{model_name} {n_grasps} grasps')
+
+    device = get_device()
+    print(device)
+    model.to(device)
+    # Epochs
+    test_loss_out = []
+    test_acc_out = []
+    test_loss = 0.0
+    test_accuracy = 0.0
+    for data in test_loader:
+        # take the next frame from the data_loader and process it through the model
+        frame = data["data"].to(device)
+        frame_labels = data["labels"]
+        # randomly switch in zero rows to vary the number of grasps being identified
+        padded_rows = np.random.randint(1, n_grasps)
+        frame[:, padded_rows:, :] = 0
+        enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
+        pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
+
+        outputs = model(frame, pred_in)
+        loss2 = criterion(outputs, enc_lab)
+
+        test_loss += loss2.item()
+        _, inds = outputs.max(dim=1)
+        frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
+        test_accuracy += frame_accuracy
+    test_accuracy = test_accuracy / len(test_loader)
+    test_loss = test_loss / len(test_loader)
+    test_loss_out.append(test_loss)
+    test_acc_out.append(test_accuracy)
 
 
 def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
