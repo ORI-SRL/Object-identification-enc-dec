@@ -7,9 +7,9 @@ class IterativeFFNN(nn.Module):
     def __init__(self):
         super(IterativeFFNN, self).__init__()
 
-        self.fc1 = nn.Linear(26, 200)
-        self.fc2 = nn.Linear(200, 200)
-        self.fc3 = nn.Linear(200, 100)
+        self.fc1 = nn.Linear(26, 100)
+        self.fc2 = nn.Linear(100, 150)
+        self.fc3 = nn.Linear(150, 100)
         self.fc4 = nn.Linear(100, 7)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
