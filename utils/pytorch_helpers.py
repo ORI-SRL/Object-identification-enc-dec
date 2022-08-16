@@ -40,6 +40,14 @@ def encode_labels(labels, classes):
     return encoded_label_frame
 
 
+def decode_labels(preds, classes):
+    # encoded_label_frame = torch.zeros((len(labels), 1, 7), dtype=torch.float)  #
+    decoded_label_frame = []  #
+    for i in range(len(preds)):
+        decoded_label_frame.append(classes[preds[i]])
+    return decoded_label_frame
+
+
 def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, classes, n_epochs=50,
                      max_patience=10, save_folder='./', save=True, show=True):
     model_name = model.__class__.__name__
@@ -68,6 +76,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
             cycle = 0
             train_accuracy = 0.0
             test_accuracy = 0.0
+            confusion_ints = torch.zeros((7, 7)).to(device)
 
             # Training
             model.train()
@@ -104,9 +113,10 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                 frame = data["data"].to(device)
                 frame_labels = data["labels"]
                 # randomly switch in zero rows to vary the number of grasps being identified
-                padded_rows = np.random.randint(1, n_grasps)
+                padded_rows = np.random.randint(1, n_grasps+1)
                 frame[:, padded_rows:, :] = 0
                 enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
+                # set the initial guess as a flat probability for each object
                 pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
                 outputs = model(frame, pred_in)
@@ -116,10 +126,16 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                 _, inds = outputs.max(dim=1)
                 frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
                 test_accuracy += frame_accuracy
+                for n in range(len(enc_lab)):
+                    row = enc_lab[n]
+                    col = inds[n]
+                    confusion_ints[row, col] += 1
+
             test_accuracy = test_accuracy / len(test_loader)
             test_loss = test_loss / len(test_loader)
             test_loss_out.append(test_loss)
             test_acc_out.append(test_accuracy)
+            confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=1)
 
             print('Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \t Training accuracy {:.2f} '
                   '\t Testing accuracy {:.2f}'
@@ -174,11 +190,15 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
         x = list(range(1, len(test_loss_out) + 1))
         ax1.plot(x, train_loss_out, label="Training loss")
         ax1.plot(x, test_loss_out, label="Testing loss")
+        ax1.plot(best_loss_dict['epoch'], best_loss_dict['train_loss'])
+        ax1.plot(best_loss_dict['epoch'], best_loss_dict['test_loss'])
         ax1.set_xlabel('epoch #')
         ax1.set_ylabel('Loss')
         ax1.legend()
         ax2.plot(train_acc_out, label="Training accuracy")
         ax2.plot(test_acc_out, label="Testing accuracy")
+        ax2.plot(best_loss_dict['epoch'], best_loss_dict['train_acc'])
+        ax2.plot(best_loss_dict['epoch'], best_loss_dict['test_acc'])
         ax2.set_xlabel('epoch #')
         ax2.set_ylabel('Accuracy')
         ax2.legend()
@@ -186,9 +206,9 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
     return best_params, best_loss_dict
 
 
-def test_iter_model(model, train_loader, test_loader, classes, show=True):
+def test_iter_model(model, test_loader, classes, criterion):
     model_name = model.__class__.__name__
-    print(f'{model_name} {n_grasps} grasps')
+    print(f'{model_name}')
 
     device = get_device()
     print(device)
@@ -198,27 +218,53 @@ def test_iter_model(model, train_loader, test_loader, classes, show=True):
     test_acc_out = []
     test_loss = 0.0
     test_accuracy = 0.0
+    grasp_accuracy = torch.zeros((9, 2)).to(device)
+    confusion_ints = torch.zeros((7, 7)).to(device)
+    confusion_perc = torch.zeros((7, 7)).to(device)
+    true_labels = []
+    pred_labels = []
+
     for data in test_loader:
         # take the next frame from the data_loader and process it through the model
         frame = data["data"].to(device)
         frame_labels = data["labels"]
         # randomly switch in zero rows to vary the number of grasps being identified
-        padded_rows = np.random.randint(1, n_grasps)
-        frame[:, padded_rows:, :] = 0
+        padded_rows_start = np.random.randint(1, 10)
+        frame[:, padded_rows_start:, :] = 0
         enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
+        # set the initial guess as a flat probability for each object
         pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
+        # run the model and calculate loss
         outputs = model(frame, pred_in)
         loss2 = criterion(outputs, enc_lab)
 
         test_loss += loss2.item()
+
+        # calculate accuracy of classification
         _, inds = outputs.max(dim=1)
         frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
         test_accuracy += frame_accuracy
+        grasp_accuracy[padded_rows_start-1, 0] += 1
+        grasp_accuracy[padded_rows_start-1, 1] += frame_accuracy
+
+        # use indices of objects to form confusion matrix
+        for n in range(len(enc_lab)):
+            row = enc_lab[n]
+            col = inds[n]
+            confusion_ints[row, col] += 1
+        pred_labels.extend(decode_labels(inds, classes))
+        true_labels.extend(frame_labels)
+
     test_accuracy = test_accuracy / len(test_loader)
     test_loss = test_loss / len(test_loader)
     test_loss_out.append(test_loss)
     test_acc_out.append(test_accuracy)
+    grasp_accuracy[:, 1] = grasp_accuracy[:, 1] / grasp_accuracy[:, 0]
+    print(f'Grasp accuracy: {grasp_accuracy}')
+    confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=0)
+
+    return true_labels, pred_labels
 
 
 def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,

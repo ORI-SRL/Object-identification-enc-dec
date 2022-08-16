@@ -5,11 +5,11 @@ import os
 from os.path import exists
 import csv
 import pickle
-from utils.pytorch_helpers import learn_iter_model, learn_model, test_model, seed_experiment
+from utils.pytorch_helpers import *
 from utils.data_handlers import ObjectGraspsDataset
 from torch.utils.data import DataLoader
 from utils.networks import *
-from utils.ml_classifiers import svm_classifier, knn_classifier, tree_searches, compare_classifiers
+from utils.ml_classifiers import *
 from utils.loss_plotting import *
 import numpy as np
 
@@ -29,9 +29,9 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-TRAIN_MODEL = True
-TEST_MODEL = False
-USE_PREVIOUS = False
+TRAIN_MODEL = False
+TEST_MODEL = True
+USE_PREVIOUS = True
 COMPARE_LOSSES = False
 
 for ModelArchitecture in models:
@@ -101,27 +101,33 @@ for ModelArchitecture in models:
 
         if TEST_MODEL:
             # os.listdir('./saved_model_states'):
-            print(f'{model.__class__.__name__}_{num_grasps}_grasps')
-            model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_{num_grasps}grasps_model_state.pt'
+            model_name = model.__class__.__name__
+            print(f'{model_name}_{num_grasps}_grasps')
+            model_state = f'{MODEL_SAVE_FOLDER}{model_name}_{num_grasps}grasps_model_state.pt'
             model.load_state_dict(torch.load(model_state))
             model.eval()
-            train_data, train_labels, test_data, test_labels, silhouette_score = test_model(
-                model, train_loader, test_loader, classes, num_grasps, compare=False)
+            if model.__class__.__name__ == 'IterativeFFNN':
+                criterion = nn.CrossEntropyLoss()
+                true_labels, pred_labels = test_iter_model(model, test_loader, classes, criterion)
+                plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
+            else:
+                train_data, train_labels, test_data, test_labels, silhouette_score = test_model(
+                    model, train_loader, test_loader, classes, num_grasps, compare=False)
 
-            # svm_params, svm_acc = svm_classifier(train_data.detach().numpy(), train_labels,
-            #                                     test_data.detach().numpy(), test_labels, num_grasps, learn=False)
-            knn_params, knn_acc = knn_classifier(train_data.detach().numpy(), train_labels,
-                                                 test_data.detach().numpy(), test_labels, num_grasps, learn=False)
-            tree_params, tree_acc = tree_searches(train_data.detach().numpy(), train_labels,
-                                                  test_data.detach().numpy(), test_labels, num_grasps, learn=False)
-            print('knn accuracy: {:.4f} \t tree accuracy: {:.4f}'.format(
-                knn_acc, tree_acc))  # 'svm accuracy: {:.4f}\t,
-            # ml_dict[f'{model.__class__.__name__}_{num_grasps}_svm'] = svm_params
-            ml_dict[f'{model.__class__.__name__}_{num_grasps}_knn'] = knn_params
-            ml_dict[f'{model.__class__.__name__}_{num_grasps}_tree'] = tree_params
-            with open(f'./{MODEL_SAVE_FOLDER}classifier_comparison.pkl', 'wb') as f:
-                pickle.dump(ml_dict, f)
-            plt.close('all')
+                # svm_params, svm_acc = svm_classifier(train_data.detach().numpy(), train_labels,
+                #                                     test_data.detach().numpy(), test_labels, num_grasps, learn=False)
+                knn_params, knn_acc = knn_classifier(train_data.detach().numpy(), train_labels,
+                                                     test_data.detach().numpy(), test_labels, num_grasps, learn=False)
+                tree_params, tree_acc = tree_searches(train_data.detach().numpy(), train_labels,
+                                                      test_data.detach().numpy(), test_labels, num_grasps, learn=False)
+                print('knn accuracy: {:.4f} \t tree accuracy: {:.4f}'.format(
+                    knn_acc, tree_acc))  # 'svm accuracy: {:.4f}\t,
+                # ml_dict[f'{model.__class__.__name__}_{num_grasps}_svm'] = svm_params
+                ml_dict[f'{model.__class__.__name__}_{num_grasps}_knn'] = knn_params
+                ml_dict[f'{model.__class__.__name__}_{num_grasps}_tree'] = tree_params
+                with open(f'./{MODEL_SAVE_FOLDER}classifier_comparison.pkl', 'wb') as f:
+                    pickle.dump(ml_dict, f)
+                plt.close('all')
 if COMPARE_LOSSES:
     for ModelArchitecture in models:
         model = ModelArchitecture()

@@ -159,9 +159,12 @@ def compare_classifiers(classifiers, names, train_data, train_labels, test_data,
     return most_acc, score
 
 
-def plot_confusion(data, labels, model_fit, n_grasps):
+def plot_confusion(data, labels, model_fit, n_grasps, iter=False):
     unique_labels = sorted(list(set(labels)))
-    pred_labels = model_fit.predict(data)
+    if iter:
+        pred_labels = data
+    else:
+        pred_labels = model_fit.predict(data)
     cm = confusion_matrix(labels, pred_labels, labels=unique_labels)
     cm_display = ConfusionMatrixDisplay(cm, display_labels=unique_labels).plot()
     cm_display.ax_.set_title(f'{n_grasps} grasps - {model_fit.__class__.__name__}')
