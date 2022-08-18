@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import pickle
-from sklearn.model_selection import StratifiedKFold, GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import StratifiedKFold, GridSearchCV  # , RandomizedSearchCV
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC, LinearSVC
 from sklearn.tree import DecisionTreeClassifier
@@ -45,9 +45,9 @@ def svm_classifier(train_data, train_labels, test_data, test_labels, n_grasps, l
         rbf_grid.fit(train_data[0:data_points, :], train_labels[0:data_points])  # 0.01, 1000
         rbf_params = list(rbf_grid.best_params_.values())  # list(['rbf', 0.001, 'ovr', 100.0])'''
         names = [
-            "Linear SVM"]  #,
-            # "Poly SVM",
-            # "RBF SVM"]
+            "Linear SVM"]
+        # "Poly SVM",
+        # "RBF SVM"]
         classifiers = [
             SVC(kernel="linear", C=lin_params[0], decision_function_shape='ovr'),
             # SVC(kernel="rbf", gamma=rbf_params[1], C=rbf_params[3], decision_function_shape='ovr'),
@@ -96,8 +96,8 @@ def tree_searches(train_data, train_labels, test_data, test_labels, n_grasps, le
             "Random Forest"]
         classifiers = [
             DecisionTreeClassifier(max_depth=tree_params[0]),
-            RandomForestClassifier(max_depth=forest_params[0],  n_estimators=forest_params[1])
-                                   # max_features=forest_params[1])
+            RandomForestClassifier(max_depth=forest_params[0], n_estimators=forest_params[1])
+            # max_features=forest_params[1])
         ]
         tree, score = compare_classifiers(classifiers, names, train_data, train_labels, test_data, test_labels)
     else:
