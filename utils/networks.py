@@ -11,6 +11,7 @@ class IterativeFFNN(nn.Module):
         self.fc2 = nn.Linear(100, 150)
         self.fc3 = nn.Linear(150, 100)
         self.fc4 = nn.Linear(100, 7)
+        self.drop = nn.Dropout2d(.20)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
 
@@ -34,7 +35,8 @@ class IterativeFFNN(nn.Module):
                 h3 = self.fc3(relu)
                 relu = self.relu(h3)
                 h_out = self.fc4(relu)
-                output = self.tanh(h_out)
+                drop_out = self.drop(h_out)
+                output = self.tanh(drop_out)
                 next_pred = self.softmax(output)
         return output
 
