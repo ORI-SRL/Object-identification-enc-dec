@@ -48,6 +48,17 @@ def decode_labels(preds, classes):
     return decoded_label_frame
 
 
+def gamma_loss(x_entropy, frame_out, labels):
+    gamma = 0.9
+    rows = frame_out.size(1)
+    l_n = torch.zeros(rows, 1)
+    for row in range(rows):
+        l_n[row] = x_entropy(frame_out[:, row, :], labels) * pow(gamma, rows-row)
+
+    loss_out = torch.sum(l_n) / rows
+    return loss_out
+
+
 def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, classes, n_epochs=50,
                      max_patience=10, save_folder='./', save=True, show=True):
     model_name = model.__class__.__name__
@@ -85,20 +96,20 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                 frame_labels = data["labels"]
 
                 # randomly switch in zero rows to vary the number of grasps being identified
-                padded_rows = np.random.randint(1, n_grasps)
+                padded_rows = np.random.randint(1, n_grasps+1)
                 frame[:, padded_rows:, :] = 0
                 enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
                 pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
                 optimizer.zero_grad()
-                outputs = model(frame, pred_in)
+                final_row, output = model(frame, pred_in)
 
-                loss = criterion(outputs, enc_lab)
+                loss = gamma_loss(criterion, output, enc_lab)
 
                 loss.backward()  # loss +
                 optimizer.step()
                 train_loss += loss.item()
-                _, inds = outputs.max(dim=1)
+                _, inds = final_row.max(dim=1)
                 frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
                 train_accuracy += frame_accuracy
                 cycle += 1
@@ -119,11 +130,11 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                 # set the initial guess as a flat probability for each object
                 pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
-                outputs = model(frame, pred_in)
-                loss2 = criterion(outputs, enc_lab)
+                final_row, output = model(frame, pred_in)
+                loss2 = gamma_loss(criterion, output, enc_lab) # criterion(outputs, enc_lab)
 
                 test_loss += loss2.item()
-                _, inds = outputs.max(dim=1)
+                _, inds = final_row.max(dim=1)
                 frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
                 test_accuracy += frame_accuracy
                 for n in range(len(enc_lab)):
@@ -157,15 +168,15 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                           f'patience exceeded at {max_patience}')
                     break
 
-            loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_acc_out,
-                         'testing_silhouette': test_acc_out}
+            loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_accuracy': train_acc_out,
+                         'testing_accuracy': test_acc_out}
 
     except Exception as inst:
         print(type(inst))  # the exception instance
         print(inst.args)  # arguments stored in .args
         print(inst)  # __str__ allows args to be printed directly,
         torch.cuda.memory_snapshot()
-        model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state_failed.pt'
+        model_file = f'{save_folder}{model_name}_dropout_{n_grasps}grasps_model_state_failed.pt'
         torch.save(best_params, model_file)
 
     print('Best parameters at:'
@@ -175,10 +186,10 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                   best_loss_dict['train_acc'], best_loss_dict['test_acc']))
 
     if save and best_params is not None:
-        model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state.pt'
+        model_file = f'{save_folder}{model_name}_dropout_{n_grasps}grasps_model_state.pt'
         torch.save(best_params, model_file)
         # open file for writing, "w" is writing
-        w = csv.writer(open(f'{save_folder}{model.__class__.__name__}_{n_grasps}_losses.csv', 'w'))
+        w = csv.writer(open(f'{save_folder}{model.__class__.__name__}_dropout_{n_grasps}_losses.csv', 'w'))
         # loop over dictionary keys and values
         for key, val in loss_dict.items():
             # write every key and value to file
@@ -218,7 +229,7 @@ def test_iter_model(model, test_loader, classes, criterion):
     test_acc_out = []
     test_loss = 0.0
     test_accuracy = 0.0
-    grasp_accuracy = torch.zeros((9, 2)).to(device)
+    grasp_accuracy = torch.zeros((10, 2)).to(device)
     confusion_ints = torch.zeros((7, 7)).to(device)
     confusion_perc = torch.zeros((7, 7)).to(device)
     true_labels = []
@@ -229,24 +240,24 @@ def test_iter_model(model, test_loader, classes, criterion):
         frame = data["data"].to(device)
         frame_labels = data["labels"]
         # randomly switch in zero rows to vary the number of grasps being identified
-        padded_rows_start = np.random.randint(1, 10)
+        padded_rows_start = np.random.randint(1, 11)
         frame[:, padded_rows_start:, :] = 0
         enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
         # set the initial guess as a flat probability for each object
         pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
         # run the model and calculate loss
-        outputs = model(frame, pred_in)
-        loss2 = criterion(outputs, enc_lab)
+        last_frame, output = model(frame, pred_in)
+        loss2 = gamma_loss(criterion, output, enc_lab)# criterion(outputs, enc_lab)
 
         test_loss += loss2.item()
 
         # calculate accuracy of classification
-        _, inds = outputs.max(dim=1)
+        _, inds = last_frame.max(dim=1)
         frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
         test_accuracy += frame_accuracy
-        grasp_accuracy[padded_rows_start-1, 0] += 1
-        grasp_accuracy[padded_rows_start-1, 1] += frame_accuracy
+        grasp_accuracy[padded_rows_start-1, 1] += 1
+        grasp_accuracy[padded_rows_start-1, 0] += frame_accuracy
 
         # use indices of objects to form confusion matrix
         for n in range(len(enc_lab)):
@@ -260,7 +271,8 @@ def test_iter_model(model, test_loader, classes, criterion):
     test_loss = test_loss / len(test_loader)
     test_loss_out.append(test_loss)
     test_acc_out.append(test_accuracy)
-    grasp_accuracy[:, 1] = grasp_accuracy[:, 1] / grasp_accuracy[:, 0]
+    grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
+    grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
     print(f'Grasp accuracy: {grasp_accuracy}')
     confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=0)
 
