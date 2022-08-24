@@ -11,7 +11,7 @@ class IterativeFFNN(nn.Module):
         self.fc2 = nn.Linear(100, 150)
         self.fc3 = nn.Linear(150, 100)
         self.fc4 = nn.Linear(100, 7)
-        self.drop = nn.Dropout2d(.20)
+        self.drop = nn.Dropout(.20)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
 
@@ -20,6 +20,8 @@ class IterativeFFNN(nn.Module):
     def forward(self, x, pred_in):
 
         next_pred = pred_in
+        output = torch.empty((x.size(0), 0, 7)).to('cuda:0')
+        final = torch.zeros(x.size(0), 1, 7)
         for j in range(x.size(-2)):
             row = x[:, j, :]
 
@@ -36,9 +38,10 @@ class IterativeFFNN(nn.Module):
                 relu = self.relu(h3)
                 h_out = self.fc4(relu)
                 drop_out = self.drop(h_out)
-                output = self.tanh(drop_out)
-                next_pred = self.softmax(output)
-        return output
+                final = self.tanh(drop_out)
+                next_pred = self.softmax(final)
+                output = torch.cat((output, final.reshape(x.size(0), 1, 7)), dim=1)
+        return final, output
 
 
 class TwoLayerConv(nn.Module):
