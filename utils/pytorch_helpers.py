@@ -96,19 +96,24 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                 frame_labels = data["labels"]
 
                 # randomly switch in zero rows to vary the number of grasps being identified
-                padded_rows = np.random.randint(1, n_grasps+1)
-                frame[:, padded_rows:, :] = 0
+                padded_start = np.random.randint(1, n_grasps + 1)
+                frame[:, padded_start:, :] = 0
                 enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
                 pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
-                optimizer.zero_grad()
-                final_row, output = model(frame, pred_in)
-
-                loss = gamma_loss(criterion, output, enc_lab)
+                for r in range(padded_start):
+                    optimizer.zero_grad()
+                    final_row, output = model(frame[:, r, :], pred_in)
+                    pred_in = final_row.detach()
+                    grasp_loss = gamma_loss(criterion, output, enc_lab)
+                    if r == 0:
+                        loss = grasp_loss
+                    else:
+                        loss += grasp_loss
+                    train_loss += grasp_loss.item()
 
                 loss.backward()  # loss +
                 optimizer.step()
-                train_loss += loss.item()
                 _, inds = final_row.max(dim=1)
                 frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
                 train_accuracy += frame_accuracy
@@ -124,16 +129,17 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                 frame = data["data"].to(device)
                 frame_labels = data["labels"]
                 # randomly switch in zero rows to vary the number of grasps being identified
-                padded_rows = np.random.randint(1, n_grasps+1)
-                frame[:, padded_rows:, :] = 0
+                padded_start = np.random.randint(1, n_grasps + 1)
+                frame[:, padded_start:, :] = 0
                 enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
                 # set the initial guess as a flat probability for each object
                 pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
-                final_row, output = model(frame, pred_in)
-                loss2 = gamma_loss(criterion, output, enc_lab) # criterion(outputs, enc_lab)
+                for r in range(padded_start):
+                    final_row, output = model(frame[:, r, :], pred_in)
+                    loss2 = gamma_loss(criterion, output, enc_lab) # criterion(outputs, enc_lab)
 
-                test_loss += loss2.item()
+                    test_loss += loss2.item()
                 _, inds = final_row.max(dim=1)
                 frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
                 test_accuracy += frame_accuracy
