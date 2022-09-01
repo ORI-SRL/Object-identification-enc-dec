@@ -29,10 +29,11 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-TRAIN_MODEL = False
+TRAIN_MODEL = True
 TEST_MODEL = True
-USE_PREVIOUS = True
+USE_PREVIOUS = False
 COMPARE_LOSSES = False
+ITERATIVE = True
 
 for ModelArchitecture in models:
     for num_grasps in n_grasps:
@@ -50,7 +51,7 @@ for ModelArchitecture in models:
                                               f'{DATA_FOLDER}shuffled_val_labels.npy', num_grasps, train_data.max_vals,
                                               train_data.min_vals, train=False, pre_sort=True, random_pad=False)
 
-        if model.__class__.__name__ == 'IterativeFFNN':
+        if ITERATIVE:
             train_data.data = train_data.data.reshape(train_data.data.size(0), train_data.data.size(2),
                                                       train_data.data.size(3))
             test_data.data = test_data.data.reshape(test_data.data.size(0), test_data.data.size(2),
@@ -80,11 +81,11 @@ for ModelArchitecture in models:
             optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
 
             print(model)
-            if model.__class__.__name__ == 'IterativeFFNN':
+            if ITERATIVE:
                 batch_params, batch_losses = learn_iter_model(model, train_loader, test_loader, optimizer, criterion,
                                                               num_grasps, classes,
                                                               n_epochs=1500,
-                                                              max_patience=100,
+                                                              max_patience=50,
                                                               save_folder=MODEL_SAVE_FOLDER,
                                                               save=True,
                                                               show=True)
@@ -103,10 +104,10 @@ for ModelArchitecture in models:
             # os.listdir('./saved_model_states'):
             model_name = model.__class__.__name__
             print(f'{model_name}_{num_grasps}_grasps')
-            model_state = f'{MODEL_SAVE_FOLDER}{model_name}_{num_grasps}grasps_model_state.pt'
+            model_state = f'{MODEL_SAVE_FOLDER}{model_name}_dropout_{num_grasps}grasps_model_state.pt'
             model.load_state_dict(torch.load(model_state))
             model.eval()
-            if model.__class__.__name__ == 'IterativeFFNN':
+            if ITERATIVE:
                 criterion = nn.CrossEntropyLoss()
                 true_labels, pred_labels = test_iter_model(model, test_loader, classes, criterion)
                 plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
