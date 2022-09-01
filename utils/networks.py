@@ -2,16 +2,35 @@ import torch
 import torch.nn as nn
 
 
+class IterativeRNN(nn.Module):
+
+    def __init__(self):
+        super(IterativeRNN, self).__init__()
+
+        self.lin1 = nn.Linear(19, 100)
+        self.lin2 = nn.Linear(110, 7)
+        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
+
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x, hidden):
+        combined = torch.cat((input, hidden), 1)
+        hidden = self.lin1(combined)
+        output = self.lin2(combined)
+        output = self.softmax(output)
+        return output, hidden
+
 class IterativeFFNN(nn.Module):
 
     def __init__(self):
         super(IterativeFFNN, self).__init__()
 
-        self.fc1 = nn.Linear(26, 100)
-        self.fc2 = nn.Linear(100, 150)
-        self.fc3 = nn.Linear(150, 100)
+        self.fc1 = nn.Linear(26, 200)
+        self.fc2 = nn.Linear(200, 200)
+        self.fc3 = nn.Linear(200, 100)
         self.fc4 = nn.Linear(100, 7)
-        self.drop = nn.Dropout(.20)
+        self.drop = nn.Dropout(.15)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
 
@@ -22,25 +41,76 @@ class IterativeFFNN(nn.Module):
         next_pred = pred_in
         output = torch.empty((x.size(0), 0, 7)).to('cuda:0')
         final = torch.zeros(x.size(0), 1, 7)
-        for j in range(x.size(-2)):
-            row = x[:, j, :]
+        # for j in range(x.size(-2)):
+        row = x.reshape(x.size(0), 1, x.size(-1))  # [:, j, :]
 
-            if torch.sum(row) != 0:
-                if j == 0:
-                    row = torch.cat((row, pred_in), dim=-1)  # concatenate the data with the predictions
-                else:
-                    row = torch.cat((row, next_pred), dim=-1)
-                h1 = self.fc1(row)
-                relu = self.relu(h1)
-                h2 = self.fc2(relu)
-                relu = self.relu(h2)
-                h3 = self.fc3(relu)
-                relu = self.relu(h3)
-                h_out = self.fc4(relu)
-                drop_out = self.drop(h_out)
-                final = self.tanh(drop_out)
-                next_pred = self.softmax(final)
-                output = torch.cat((output, final.reshape(x.size(0), 1, 7)), dim=1)
+        #    if torch.sum(row) != 0:
+        #        if j == 0:
+        row = torch.cat((row, pred_in.reshape(x.size(0), 1, 7)), dim=-1)  # concatenate the data with the predictions
+        #        else:
+        #            row = torch.cat((row, next_pred), dim=-1)
+        h1 = self.fc1(row)
+        rel1 = self.relu(h1)
+        h2 = self.fc2(rel1)
+        rel2 = self.relu(h2)
+        h3 = self.fc3(rel2)
+        rel3 = self.relu(h3)
+        h_out = self.fc4(rel3)
+        drop_out = self.drop(h_out)
+        final = self.tanh(drop_out)
+        next_pred = self.softmax(final)
+        output = torch.cat((output, final.reshape(x.size(0), 1, 7)), dim=1)
+        return final.reshape(x.size(0), 7), output
+
+
+class IterativeCNN(nn.Module):
+
+    def __init__(self):
+        super(IterativeCNN, self).__init__()
+        self.fwd = nn.Sequential(
+            nn.Conv1d(1, 32, 19, padding=0),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(256, 7),
+            nn.Dropout1d(0.15),
+            nn.Tanh(),
+        )
+        self.conv1 = nn.Conv1d(1, 32, 19, padding=0)
+        self.conv2 = nn.Conv1d(32, 16, 9, padding=0)
+        self.flatten = nn.Flatten()
+        self.fc = nn.Linear(256, 7)
+        self.drop = nn.Dropout1d(0.15)
+        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
+        self.sig = nn.Sigmoid()
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x, pred_in):
+        next_pred = pred_in
+        output = torch.empty((x.size(0), 0, 7)).to('cuda:0')
+        final = torch.zeros(x.size(0), 1, 7)
+
+        # for j in range(x.size(-2)):
+        row = x.reshape(x.size(0), 1, x.size(-1))
+        # block = torch.cat([row, torch.zeros(x.size(0), 1).to('cuda:0')], dim=-1)
+        # block.resize(4, 5)
+        # block = nn.functional.pad(block, (1, 1))
+
+        # if torch.sum(row) != 0:
+        #     if j == 0:
+        #         arr = torch.cat((row, pred_in), dim=-1).reshape(x.size(0), 1, 26)  # concatenate the data with the predictions
+        #     else:
+        arr = torch.cat((row, next_pred.reshape(x.size(0), 1, 7)), dim=-1)
+        final = self.fwd(arr)  # h1 = self.conv1(arr)
+        # rel1 = self.relu(h1)
+            # h2 = self.conv2(rel1)
+            # rel2 = self.relu(h2)
+            # flat = self.flatten(rel1)
+            # lin = self.fc(flat)
+            # drop_out = self.drop(lin)
+            # final = self.tanh(drop_out)
+        next_pred = self.softmax(final)
+        output = torch.cat((output, final.reshape(x.size(0), 1, 7)), dim=1)
         return final, output
 
 
