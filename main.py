@@ -17,7 +17,7 @@ DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/'
 n_grasps = [10]  # [10, 7, 5, 3, 1]
-models = [IterativeFFNN]  # TwoLayerConv, , TwoLayerWDropout
+models = [IterativeRNN]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
@@ -30,10 +30,11 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 batch_size = 32
 
 TRAIN_MODEL = True
-TEST_MODEL = True
+TEST_MODEL = False
 USE_PREVIOUS = False
 COMPARE_LOSSES = False
-ITERATIVE = True
+ITERATIVE = False
+RNN = True
 
 for ModelArchitecture in models:
     for num_grasps in n_grasps:
@@ -51,7 +52,7 @@ for ModelArchitecture in models:
                                               f'{DATA_FOLDER}shuffled_val_labels.npy', num_grasps, train_data.max_vals,
                                               train_data.min_vals, train=False, pre_sort=True, random_pad=False)
 
-        if ITERATIVE:
+        if ITERATIVE or RNN:
             train_data.data = train_data.data.reshape(train_data.data.size(0), train_data.data.size(2),
                                                       train_data.data.size(3))
             test_data.data = test_data.data.reshape(test_data.data.size(0), test_data.data.size(2),
@@ -78,17 +79,25 @@ for ModelArchitecture in models:
             # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
             criterion = nn.CrossEntropyLoss()
             # Optimizer
-            optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
+            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
             print(model)
             if ITERATIVE:
                 batch_params, batch_losses = learn_iter_model(model, train_loader, test_loader, optimizer, criterion,
-                                                              num_grasps, classes,
+                                                              classes,
                                                               n_epochs=1500,
                                                               max_patience=50,
                                                               save_folder=MODEL_SAVE_FOLDER,
                                                               save=True,
                                                               show=True)
+            elif RNN:
+                batch_params, batch_losses = learn_RNN(model, train_loader, test_loader, optimizer, criterion,
+                                                       classes,
+                                                       n_epochs=1000,
+                                                       max_patience=50,
+                                                       save_folder=MODEL_SAVE_FOLDER,
+                                                       save=True,
+                                                       show=True)
             else:
                 batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
                                                          num_grasps,
@@ -107,8 +116,8 @@ for ModelArchitecture in models:
             model_state = f'{MODEL_SAVE_FOLDER}{model_name}_dropout_{num_grasps}grasps_model_state.pt'
             model.load_state_dict(torch.load(model_state))
             model.eval()
+            criterion = nn.CrossEntropyLoss()
             if ITERATIVE:
-                criterion = nn.CrossEntropyLoss()
                 true_labels, pred_labels = test_iter_model(model, test_loader, classes, criterion)
                 plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
             else:
