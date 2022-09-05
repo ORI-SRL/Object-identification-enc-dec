@@ -53,16 +53,68 @@ def gamma_loss(x_entropy, frame_out, labels):
     rows = frame_out.size(1)
     l_n = torch.zeros(rows, 1)
     for row in range(rows):
-        l_n[row] = x_entropy(frame_out[:, row, :], labels) * pow(gamma, rows-row)
+        l_n[row] = x_entropy(frame_out[:, row, :], labels) * pow(gamma, rows - row)
 
     loss_out = torch.sum(l_n) / rows
     return loss_out
 
 
-def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, classes, n_epochs=50,
-                     max_patience=10, save_folder='./', save=True, show=True):
+def save_params(filename, loss, params):
+    model_file = f'{filename}_model_state.pt'
+    torch.save(params, model_file)
+    # open file for writing, "w" is writing
+    w = csv.writer(open(f'{filename}_losses.csv', 'w'))
+    # loop over dictionary keys and values
+    for key, val in loss.items():
+        # write every key and value to file
+        w.writerow([key, val])
+
+
+def plot_model(best_loss, train_loss, test_loss, type_train, type_test, type):
+    fig, [ax1, ax2] = plt.subplots(1, 2)
+    x = list(range(1, len(test_loss) + 1))
+    ax1.plot(x, train_loss, label="Training loss")
+    ax1.plot(x, test_loss, label="Testing loss")
+    ax1.plot(best_loss['epoch'], best_loss['train_loss'])
+    ax1.plot(best_loss['epoch'], best_loss['test_loss'])
+    ax1.set_xlabel('epoch #')
+    ax1.set_ylabel('Loss')
+    ax1.legend()
+    ax2.plot(type_train, label=f"Training {type}")
+    ax2.plot(type_test, label=f"Testing {type}")
+    ax2.plot(best_loss['epoch'], best_loss['train_acc'])
+    ax2.plot(best_loss['epoch'], best_loss['test_acc'])
+    ax2.set_xlabel('epoch #')
+    ax2.set_ylabel('Accuracy')
+    ax2.legend()
+
+
+def early_stopping(loss_dict, patience, max_patience, test_loss, train_loss, train_acc, test_acc, epoch, model,
+                   best_params):
+    early_stop = False
+    if loss_dict['test_loss'] is None or test_loss < loss_dict['test_loss']:
+
+        loss_dict = {'train_loss': train_loss, 'test_loss': test_loss, 'train_acc': train_acc,
+                     'test_acc': test_acc, 'epoch': epoch}
+        patience = 0
+        best_params = copy.copy(model.state_dict())
+    else:
+        patience += 1
+        if patience >= max_patience:
+            print(f'Early stopping: training terminated at epoch {epoch} due to es, '
+                  f'patience exceeded at {max_patience}')
+            early_stop = True
+        else:
+            early_stop = False
+    return early_stop, loss_dict, patience, best_params
+
+
+def model_init(model, n_grasps=None):
     model_name = model.__class__.__name__
-    print(f'{model_name} {n_grasps} grasps')
+    if n_grasps is not None:
+        print(f'{model_name}_{n_grasps}')
+    else:
+        print(model_name)
 
     device = get_device()
     print(device)
@@ -78,15 +130,110 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
     best_loss_dict = {'train_loss': None, 'test_loss': None, 'train_acc': None,
                       'test_acc': None, 'epoch': None}
     best_params = None
+    return model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
+           best_params
+
+
+def learn_RNN(model, train_loader, test_loader, optimizer, criterion, classes, n_epochs=50,
+              max_patience=25, save_folder='./', save=True, show=True):
+
+    model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
+    best_params = model_init(model)
+    for epoch in range(1, n_epochs+1):
+        train_loss, test_loss, train_accuracy, test_accuracy = 0.0, 0.0, 0.0, 0.0
+        cycle = 0
+        confusion_ints = torch.zeros((7, 7)).to(device)
+
+        model.train()
+        for data in train_loader:
+            frame = data["data"].to(device)  # .reshape(32, 10, 19)
+            frame_labels = data["labels"]
+
+            # randomly switch in zero rows to vary the number of grasps being identified
+            padded_start = np.random.randint(1, 11)
+            frame[:, padded_start:, :] = 0
+            nul_rows = frame.sum(dim=2) != 0
+            frame = frame[:, :padded_start, :]
+            enc_lab = encode_labels(frame_labels, classes).to(device)
+            hidden = torch.zeros(frame.size(0), 128).to(device)
+            # optimizer.zero_grad()
+
+            for i in range(padded_start):
+                optimizer.zero_grad()
+                output, hidden = model(frame[:, i, :], hidden)
+                hidden = hidden.detach()
+                loss = criterion(output, enc_lab)
+                loss.backward()
+                optimizer.step()
+            # output = output.reshape((-1, 7))
+
+            _, inds = output.max(dim=1)
+            frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
+            train_accuracy += frame_accuracy
+            train_loss += loss
+            cycle += 1
+        train_loss = train_loss / len(train_loader)
+        train_accuracy = train_accuracy / len(train_loader)
+        train_loss_out.append(train_loss)
+        train_acc_out.append(train_accuracy)
+
+        model.eval()
+        for data in test_loader:
+            frame = data["data"].to(device)  # .reshape(32, 10, 19)
+            frame_labels = data["labels"]
+
+            # randomly switch in zero rows to vary the number of grasps being identified
+            padded_start = np.random.randint(1, 11)
+            frame[:, padded_start:, :] = 0
+            nul_rows = frame.sum(dim=2) != 0
+            frame = frame[:, :padded_start, :]
+            enc_lab = encode_labels(frame_labels, classes).to(device)
+            hidden = torch.zeros(frame.size(0), 128).to(device)
+
+            for i in range(padded_start):
+                output, hidden = model(frame[:, i, :], hidden)
+                hidden = hidden.detach()
+                loss2 = criterion(output, enc_lab)
+            test_loss += loss2
+            _, inds = output.max(dim=1)
+            frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
+            test_accuracy += frame_accuracy
+            for n in range(len(enc_lab)):
+                row = enc_lab[n]
+                col = inds[n]
+                confusion_ints[row, col] += 1
+
+        test_accuracy = test_accuracy / len(test_loader)
+        test_loss = test_loss / len(test_loader)
+        test_loss_out.append(test_loss)
+        test_acc_out.append(test_accuracy)
+        confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=1)
+
+        print('Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \t Training accuracy {:.2f} '
+              '\t Testing accuracy {:.2f}'
+              .format(epoch, train_loss, test_loss, train_accuracy, test_accuracy))
+        # empty cache to prevent overusing the memory
+        torch.cuda.empty_cache()
+        # Early Stopping Logic
+        early_stop, best_loss_dict, patience, best_params = early_stopping(best_loss_dict, patience, max_patience,
+                                                                           test_loss, train_loss, train_accuracy,
+                                                                           test_accuracy, epoch, model, best_params)
+        if early_stop:
+            break
+        loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_accuracy': train_acc_out,
+                     'testing_accuracy': test_acc_out}
+
+
+def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, classes, n_epochs=50,
+                     max_patience=10, save_folder='./', save=True, show=True):
+    model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
+    best_params = model_init(model)
 
     try:
         for epoch in range(1, n_epochs + 1):
             # monitor training loss
-            train_loss = 0.0
-            test_loss = 0.0
+            train_loss, test_loss, train_accuracy, test_accuracy = 0.0, 0.0, 0.0, 0.0
             cycle = 0
-            train_accuracy = 0.0
-            test_accuracy = 0.0
             confusion_ints = torch.zeros((7, 7)).to(device)
 
             # Training
@@ -96,7 +243,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                 frame_labels = data["labels"]
 
                 # randomly switch in zero rows to vary the number of grasps being identified
-                padded_start = np.random.randint(1, n_grasps + 1)
+                padded_start = np.random.randint(1, 11)
                 frame[:, padded_start:, :] = 0
                 enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
                 pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
@@ -129,7 +276,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                 frame = data["data"].to(device)
                 frame_labels = data["labels"]
                 # randomly switch in zero rows to vary the number of grasps being identified
-                padded_start = np.random.randint(1, n_grasps + 1)
+                padded_start = np.random.randint(1, 11)
                 frame[:, padded_start:, :] = 0
                 enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
                 # set the initial guess as a flat probability for each object
@@ -137,9 +284,10 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
 
                 for r in range(padded_start):
                     final_row, output = model(frame[:, r, :], pred_in)
-                    loss2 = gamma_loss(criterion, output, enc_lab) # criterion(outputs, enc_lab)
-
+                    pred_in = final_row.detach()
+                    loss2 = gamma_loss(criterion, output, enc_lab)
                     test_loss += loss2.item()
+
                 _, inds = final_row.max(dim=1)
                 frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
                 test_accuracy += frame_accuracy
@@ -161,19 +309,11 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
             torch.cuda.empty_cache()
 
             # Early Stopping Logic
-            if best_loss_dict['test_loss'] is None or test_loss < best_loss_dict['test_loss']:
-
-                best_loss_dict = {'train_loss': train_loss, 'test_loss': test_loss, 'train_acc': train_accuracy,
-                                  'test_acc': test_accuracy, 'epoch': epoch}
-                patience = 0
-                best_params = copy.copy(model.state_dict())
-            else:
-                patience += 1
-                if patience >= max_patience:
-                    print(f'Early stopping: training terminated at epoch {epoch} due to es, '
-                          f'patience exceeded at {max_patience}')
-                    break
-
+            early_stop, best_loss_dict, patience, best_params = early_stopping(best_loss_dict, patience, max_patience,
+                                                                               test_loss, train_loss, train_accuracy,
+                                                                               test_accuracy, epoch, model, best_params)
+            if early_stop:
+                break
             loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_accuracy': train_acc_out,
                          'testing_accuracy': test_acc_out}
 
@@ -182,7 +322,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
         print(inst.args)  # arguments stored in .args
         print(inst)  # __str__ allows args to be printed directly,
         torch.cuda.memory_snapshot()
-        model_file = f'{save_folder}{model_name}_dropout_{n_grasps}grasps_model_state_failed.pt'
+        model_file = f'{save_folder}{model_name}_dropout_model_state_failed.pt'
         torch.save(best_params, model_file)
 
     print('Best parameters at:'
@@ -192,47 +332,21 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, n_g
                   best_loss_dict['train_acc'], best_loss_dict['test_acc']))
 
     if save and best_params is not None:
-        model_file = f'{save_folder}{model_name}_dropout_{n_grasps}grasps_model_state.pt'
-        torch.save(best_params, model_file)
-        # open file for writing, "w" is writing
-        w = csv.writer(open(f'{save_folder}{model.__class__.__name__}_dropout_{n_grasps}_losses.csv', 'w'))
-        # loop over dictionary keys and values
-        for key, val in loss_dict.items():
-            # write every key and value to file
-            w.writerow([key, val])
+        model_file = f'{save_folder}{model_name}_dropout'
+        save_params(model_file, loss_dict, best_params)
 
     if show:
         # plot model losses
-        fig, [ax1, ax2] = plt.subplots(1, 2)
-        x = list(range(1, len(test_loss_out) + 1))
-        ax1.plot(x, train_loss_out, label="Training loss")
-        ax1.plot(x, test_loss_out, label="Testing loss")
-        ax1.plot(best_loss_dict['epoch'], best_loss_dict['train_loss'])
-        ax1.plot(best_loss_dict['epoch'], best_loss_dict['test_loss'])
-        ax1.set_xlabel('epoch #')
-        ax1.set_ylabel('Loss')
-        ax1.legend()
-        ax2.plot(train_acc_out, label="Training accuracy")
-        ax2.plot(test_acc_out, label="Testing accuracy")
-        ax2.plot(best_loss_dict['epoch'], best_loss_dict['train_acc'])
-        ax2.plot(best_loss_dict['epoch'], best_loss_dict['test_acc'])
-        ax2.set_xlabel('epoch #')
-        ax2.set_ylabel('Accuracy')
-        ax2.legend()
+        plot_model(best_loss_dict, train_loss_out, test_loss_out, train_acc_out, test_acc_out, type="accuracy")
 
     return best_params, best_loss_dict
 
 
 def test_iter_model(model, test_loader, classes, criterion):
-    model_name = model.__class__.__name__
-    print(f'{model_name}')
+    _, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
+    best_params = model_init(model)
 
-    device = get_device()
-    print(device)
-    model.to(device)
     # Epochs
-    test_loss_out = []
-    test_acc_out = []
     test_loss = 0.0
     test_accuracy = 0.0
     grasp_accuracy = torch.zeros((10, 2)).to(device)
@@ -254,7 +368,7 @@ def test_iter_model(model, test_loader, classes, criterion):
 
         # run the model and calculate loss
         last_frame, output = model(frame, pred_in)
-        loss2 = gamma_loss(criterion, output, enc_lab)# criterion(outputs, enc_lab)
+        loss2 = gamma_loss(criterion, output, enc_lab)  # criterion(outputs, enc_lab)
 
         test_loss += loss2.item()
 
@@ -262,8 +376,8 @@ def test_iter_model(model, test_loader, classes, criterion):
         _, inds = last_frame.max(dim=1)
         frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
         test_accuracy += frame_accuracy
-        grasp_accuracy[padded_rows_start-1, 1] += 1
-        grasp_accuracy[padded_rows_start-1, 0] += frame_accuracy
+        grasp_accuracy[padded_rows_start - 1, 1] += 1
+        grasp_accuracy[padded_rows_start - 1, 0] += frame_accuracy
 
         # use indices of objects to form confusion matrix
         for n in range(len(enc_lab)):
@@ -287,21 +401,9 @@ def test_iter_model(model, test_loader, classes, criterion):
 
 def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
                 save_folder='./', save=True, show=True):
-    model_name = model.__class__.__name__
-    print(f'{model_name} {n_grasps} grasps')
+    model_name, device, train_loss_out, test_loss_out, train_sil_out, test_sil_out, patience, best_loss_dict, \
+    best_params = model_init(model, n_grasps)
 
-    device = get_device()
-    print(device)
-    model.to(device)
-
-    # Epochs
-    train_loss_out = []
-    test_loss_out = []
-    train_sil_out = []
-    test_sil_out = []
-    best_loss_dict = {'test_loss': None}
-
-    patience = 0
     best_loss = None
     best_params = None
     try:
@@ -427,24 +529,12 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
                   -best_loss_dict['train_sil'], -best_loss_dict['test_sil']))
 
     if save and best_params is not None:
-        model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state.pt'
-        torch.save(best_params, model_file)
-        # open file for writing, "w" is writing
-        w = csv.writer(open(f'{save_folder}{model.__class__.__name__}_{n_grasps}_losses.csv', 'w'))
-        # loop over dictionary keys and values
-        for key, val in loss_dict.items():
-            # write every key and value to file
-            w.writerow([key, val])
+        model_file = f'{save_folder}{model_name}_{n_grasps}grasps'
+        save_params(model_file, best_loss_dict, best_params)
 
     if show:
         # plot model losses
-        x = list(range(1, len(test_loss_out) + 1))
-        plt.plot(x, train_loss_out, label=model_name + "Training loss")
-        plt.plot(x, test_loss_out, label=model_name + "Testing loss")
-        plt.xlabel('epoch #')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.show()
+        plot_model(best_loss_dict, train_loss_out, test_loss_out, train_sil_out, test_sil_out, type="silhouette")
 
     return best_params, loss_dict
 
