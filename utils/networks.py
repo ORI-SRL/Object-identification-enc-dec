@@ -2,6 +2,36 @@ import torch
 import torch.nn as nn
 
 
+class IterativeRCNN(nn.Module):
+
+    def __init__(self):
+        super(IterativeRCNN, self).__init__()
+
+        self.conv = nn.Sequential(
+            nn.Conv1d(1, 16, 19, padding=0),
+            nn.BatchNorm1d(16),
+            nn.ReLU(),
+            nn.Conv1d(16, 8, 5, padding=0),
+            nn.BatchNorm1d(8),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(232, 32)
+        )
+        self.pred_out = nn.Linear(32, 7)
+        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x, prev_hidden):
+        combined = torch.cat((x, prev_hidden), -1)
+        c1 = self.conv(combined)
+        h_out = self.relu(c1)
+        output = self.pred_out(c1)
+        output = self.relu(output)
+        output = self.softmax(output)
+        return output, h_out
+
+
 class IterativeRNN(nn.Module):
 
     def __init__(self):
@@ -101,25 +131,9 @@ class IterativeCNN(nn.Module):
         output = torch.empty((x.size(0), 0, 7)).to('cuda:0')
         final = torch.zeros(x.size(0), 1, 7)
 
-        # for j in range(x.size(-2)):
         row = x.reshape(x.size(0), 1, x.size(-1))
-        # block = torch.cat([row, torch.zeros(x.size(0), 1).to('cuda:0')], dim=-1)
-        # block.resize(4, 5)
-        # block = nn.functional.pad(block, (1, 1))
-
-        # if torch.sum(row) != 0:
-        #     if j == 0:
-        #         arr = torch.cat((row, pred_in), dim=-1).reshape(x.size(0), 1, 26)  # concatenate the data with the predictions
-        #     else:
         arr = torch.cat((row, next_pred.reshape(x.size(0), 1, 7)), dim=-1)
         final = self.fwd(arr)  # h1 = self.conv1(arr)
-        # rel1 = self.relu(h1)
-            # h2 = self.conv2(rel1)
-            # rel2 = self.relu(h2)
-            # flat = self.flatten(rel1)
-            # lin = self.fc(flat)
-            # drop_out = self.drop(lin)
-            # final = self.tanh(drop_out)
         next_pred = self.softmax(final)
         output = torch.cat((output, final.reshape(x.size(0), 1, 7)), dim=1)
         return final, output
