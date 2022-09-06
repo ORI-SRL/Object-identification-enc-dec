@@ -17,7 +17,7 @@ DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/'
 n_grasps = [10]  # [10, 7, 5, 3, 1]
-models = [IterativeRNN]  # TwoLayerConv, , TwoLayerWDropout
+models = [IterativeRCNN]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
@@ -30,10 +30,10 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 batch_size = 32
 
 TRAIN_MODEL = True
-TEST_MODEL = False
+TEST_MODEL = True
 USE_PREVIOUS = False
 COMPARE_LOSSES = False
-ITERATIVE = False
+ITERATIVE = True
 RNN = True
 
 for ModelArchitecture in models:
@@ -82,7 +82,7 @@ for ModelArchitecture in models:
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
             print(model)
-            if ITERATIVE:
+            if ITERATIVE and not RNN:
                 batch_params, batch_losses = learn_iter_model(model, train_loader, test_loader, optimizer, criterion,
                                                               classes,
                                                               n_epochs=1500,
@@ -91,8 +91,8 @@ for ModelArchitecture in models:
                                                               save=True,
                                                               show=True)
             elif RNN:
-                batch_params, batch_losses = learn_RNN(model, train_loader, test_loader, optimizer, criterion,
-                                                       classes,
+                batch_params, batch_losses = train_RNN(model, train_loader, test_loader, optimizer, criterion,
+                                                       classes, batch_size,
                                                        n_epochs=1000,
                                                        max_patience=50,
                                                        save_folder=MODEL_SAVE_FOLDER,
@@ -113,7 +113,7 @@ for ModelArchitecture in models:
             # os.listdir('./saved_model_states'):
             model_name = model.__class__.__name__
             print(f'{model_name}_{num_grasps}_grasps')
-            model_state = f'{MODEL_SAVE_FOLDER}{model_name}_dropout_{num_grasps}grasps_model_state.pt'
+            model_state = f'{MODEL_SAVE_FOLDER}{model_name}_dropout_model_state.pt'
             model.load_state_dict(torch.load(model_state))
             model.eval()
             criterion = nn.CrossEntropyLoss()
