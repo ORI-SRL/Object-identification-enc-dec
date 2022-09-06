@@ -7,24 +7,29 @@ class IterativeRNN(nn.Module):
     def __init__(self):
         super(IterativeRNN, self).__init__()
 
-        self.lin1 = nn.Linear(147, 256)
-        self.lin2 = nn.Linear(256, 128)
-        self.linOut = nn.Linear(128, 7)
+        self.lin1 = nn.Linear(83, 128)
+        self.lin2 = nn.Linear(128, 200)
+        self.lin3 = nn.Linear(200, 64)
+        self.linOut = nn.Linear(64, 7)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
+        self.drop = nn.Dropout(0.15)
 
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x, hidden):
         combined = torch.cat((x, hidden), -1)
+        combined = self.drop(combined)
         h1 = self.lin1(combined)
         h1 = self.relu(h1)
         h2 = self.lin2(h1)
         h2 = self.tanh(h2)
-        output = self.linOut(h2)
+        h3 = self.lin3(h2)
+        h3 = self.tanh(h3)
+        output = self.linOut(h3)
         output = self.tanh(output)
         output = self.softmax(output)
-        return output, h2
+        return output, h3
 
 
 class IterativeFFNN(nn.Module):
