@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-import torch.nn as nn
+# import torch.nn as nn
 import csv
 import matplotlib.pyplot as plt
 import copy
@@ -100,12 +100,13 @@ def early_stopping(loss_dict, patience, max_patience, test_loss, train_loss, tra
         best_params = copy.copy(model.state_dict())
     else:
         patience += 1
-        if patience >= max_patience:
-            print(f'Early stopping: training terminated at epoch {epoch} due to es, '
-                  f'patience exceeded at {max_patience}')
-            early_stop = True
-        else:
-            early_stop = False
+    if patience >= max_patience:
+        print(f'Early stopping: training terminated at epoch {epoch} due to es, '
+              f'patience exceeded at {max_patience}')
+        print(f'Best accuracies: Training: {loss_dict["train_acc"]} \t Testing: {loss_dict["test_acc"]}')
+        early_stop = True
+    else:
+        early_stop = False
     return early_stop, loss_dict, patience, best_params
 
 
@@ -136,10 +137,10 @@ def model_init(model, n_grasps=None):
 
 def learn_RNN(model, train_loader, test_loader, optimizer, criterion, classes, n_epochs=50,
               max_patience=25, save_folder='./', save=True, show=True):
-
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
     best_params = model_init(model)
-    for epoch in range(1, n_epochs+1):
+
+    for epoch in range(1, n_epochs + 1):
         train_loss, test_loss, train_accuracy, test_accuracy = 0.0, 0.0, 0.0, 0.0
         cycle = 0
         confusion_ints = torch.zeros((7, 7)).to(device)
@@ -155,16 +156,16 @@ def learn_RNN(model, train_loader, test_loader, optimizer, criterion, classes, n
             nul_rows = frame.sum(dim=2) != 0
             frame = frame[:, :padded_start, :]
             enc_lab = encode_labels(frame_labels, classes).to(device)
-            hidden = torch.zeros(frame.size(0), 128).to(device)
-            # optimizer.zero_grad()
+            hidden = torch.zeros(frame.size(0), 64).to(device)
+            optimizer.zero_grad()
 
             for i in range(padded_start):
-                optimizer.zero_grad()
+                # optimizer.zero_grad()
                 output, hidden = model(frame[:, i, :], hidden)
-                hidden = hidden.detach()
                 loss = criterion(output, enc_lab)
+                hidden = hidden.detach()
                 loss.backward()
-                optimizer.step()
+            optimizer.step()
             # output = output.reshape((-1, 7))
 
             _, inds = output.max(dim=1)
@@ -172,11 +173,13 @@ def learn_RNN(model, train_loader, test_loader, optimizer, criterion, classes, n
             train_accuracy += frame_accuracy
             train_loss += loss
             cycle += 1
-        train_loss = train_loss / len(train_loader)
+
+        train_loss = train_loss.detach().cpu() / len(train_loader)
         train_accuracy = train_accuracy / len(train_loader)
         train_loss_out.append(train_loss)
         train_acc_out.append(train_accuracy)
 
+        grasp_accuracy = torch.zeros((10, 2)).to(device)
         model.eval()
         for data in test_loader:
             frame = data["data"].to(device)  # .reshape(32, 10, 19)
@@ -188,7 +191,7 @@ def learn_RNN(model, train_loader, test_loader, optimizer, criterion, classes, n
             nul_rows = frame.sum(dim=2) != 0
             frame = frame[:, :padded_start, :]
             enc_lab = encode_labels(frame_labels, classes).to(device)
-            hidden = torch.zeros(frame.size(0), 128).to(device)
+            hidden = torch.zeros(frame.size(0), 64).to(device)
 
             for i in range(padded_start):
                 output, hidden = model(frame[:, i, :], hidden)
@@ -198,16 +201,20 @@ def learn_RNN(model, train_loader, test_loader, optimizer, criterion, classes, n
             _, inds = output.max(dim=1)
             frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
             test_accuracy += frame_accuracy
+            grasp_accuracy[padded_start - 1, 1] += 1
+            grasp_accuracy[padded_start - 1, 0] += frame_accuracy
             for n in range(len(enc_lab)):
                 row = enc_lab[n]
                 col = inds[n]
                 confusion_ints[row, col] += 1
 
         test_accuracy = test_accuracy / len(test_loader)
-        test_loss = test_loss / len(test_loader)
+        test_loss = test_loss.detach().cpu() / len(test_loader)
         test_loss_out.append(test_loss)
         test_acc_out.append(test_accuracy)
         confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=1)
+        grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
+        grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
 
         print('Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \t Training accuracy {:.2f} '
               '\t Testing accuracy {:.2f}'
@@ -222,6 +229,15 @@ def learn_RNN(model, train_loader, test_loader, optimizer, criterion, classes, n
             break
         loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_accuracy': train_acc_out,
                      'testing_accuracy': test_acc_out}
+    if save and best_params is not None:
+        model_file = f'{save_folder}{model_name}_dropout'
+        save_params(model_file, loss_dict, best_params)
+
+    if show:
+        # plot model losses
+        plot_model(best_loss_dict, train_loss_out, test_loss_out, train_acc_out, test_acc_out, type="accuracy")
+
+    return best_params, best_loss_dict
 
 
 def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, classes, n_epochs=50,
@@ -235,7 +251,6 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, cla
             train_loss, test_loss, train_accuracy, test_accuracy = 0.0, 0.0, 0.0, 0.0
             cycle = 0
             confusion_ints = torch.zeros((7, 7)).to(device)
-
             # Training
             model.train()
             for data in train_loader:
@@ -291,6 +306,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, cla
                 _, inds = final_row.max(dim=1)
                 frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
                 test_accuracy += frame_accuracy
+
                 for n in range(len(enc_lab)):
                     row = enc_lab[n]
                     col = inds[n]
