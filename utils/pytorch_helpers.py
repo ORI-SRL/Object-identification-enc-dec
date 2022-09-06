@@ -135,7 +135,7 @@ def model_init(model, n_grasps=None):
            best_params
 
 
-def learn_RNN(model, train_loader, test_loader, optimizer, criterion, classes, n_epochs=50,
+def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, batch_size, n_epochs=50,
               max_patience=25, save_folder='./', save=True, show=True):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
     best_params = model_init(model)
@@ -156,16 +156,22 @@ def learn_RNN(model, train_loader, test_loader, optimizer, criterion, classes, n
             nul_rows = frame.sum(dim=2) != 0
             frame = frame[:, :padded_start, :]
             enc_lab = encode_labels(frame_labels, classes).to(device)
-            hidden = torch.zeros(frame.size(0), 64).to(device)
-            optimizer.zero_grad()
+            hidden = torch.zeros(frame.size(0), 32).to(device)
+            # optimizer.zero_grad()
+            if model_name == 'IterativeRCNN':
+                frame = frame.reshape(frame.size(0), -1, 1, 19)
+                hidden = hidden.reshape(frame.size(0), 1, -1)
 
             for i in range(padded_start):
-                # optimizer.zero_grad()
+                optimizer.zero_grad()
                 output, hidden = model(frame[:, i, :], hidden)
                 loss = criterion(output, enc_lab)
-                hidden = hidden.detach()
                 loss.backward()
-            optimizer.step()
+                hidden = hidden.detach()
+                if model_name == 'IterativeRCNN':
+                    hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
+
+                optimizer.step()
             # output = output.reshape((-1, 7))
 
             _, inds = output.max(dim=1)
@@ -191,11 +197,17 @@ def learn_RNN(model, train_loader, test_loader, optimizer, criterion, classes, n
             nul_rows = frame.sum(dim=2) != 0
             frame = frame[:, :padded_start, :]
             enc_lab = encode_labels(frame_labels, classes).to(device)
-            hidden = torch.zeros(frame.size(0), 64).to(device)
+            hidden = torch.zeros(frame.size(0), 32).to(device)
+
+            if model_name == 'IterativeRCNN':
+                frame = frame.reshape(frame.size(0), -1, 1, 19)
+                hidden = hidden.reshape(frame.size(0), 1, -1)
 
             for i in range(padded_start):
                 output, hidden = model(frame[:, i, :], hidden)
                 hidden = hidden.detach()
+                if model_name == 'IterativeRCNN':
+                    hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
                 loss2 = criterion(output, enc_lab)
             test_loss += loss2
             _, inds = output.max(dim=1)
@@ -359,7 +371,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, cla
 
 
 def test_iter_model(model, test_loader, classes, criterion):
-    _, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
+    model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
     best_params = model_init(model)
 
     # Epochs
@@ -383,8 +395,22 @@ def test_iter_model(model, test_loader, classes, criterion):
         pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
         # run the model and calculate loss
-        last_frame, output = model(frame, pred_in)
-        loss2 = gamma_loss(criterion, output, enc_lab)  # criterion(outputs, enc_lab)
+        if model_name == 'IterativeRNN' or model_name == 'IterativeRNN':
+            hidden = torch.zeros(frame.size(0), 32).to(device)
+            if model_name == 'IterativeRCNN':
+                frame = frame.reshape(frame.size(0), -1, 1, 19)
+                hidden = hidden.reshape(frame.size(0), 1, -1)
+            for i in range(padded_rows_start):
+                # optimizer.zero_grad()
+                output, hidden = model(frame[:, i, :], hidden)
+                loss2 = criterion(output, enc_lab)
+                hidden = hidden.detach()
+                if model_name == 'IterativeRCNN':
+                    hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
+            last_frame = output
+        else:
+            last_frame, output = model(frame, pred_in)
+            loss2 = gamma_loss(criterion, output, enc_lab)  # criterion(outputs, enc_lab)
 
         test_loss += loss2.item()
 
