@@ -1,10 +1,10 @@
-import torch.nn as nn
-import torch
-import matplotlib.pyplot as plt
-import os
-from os.path import exists
-import csv
-import pickle
+# import torch.nn as nn
+# import torch
+# import matplotlib.pyplot as plt
+# import os
+# from os.path import exists
+# import csv
+# import pickle
 from utils.pytorch_helpers import *
 from utils.data_handlers import ObjectGraspsDataset
 from torch.utils.data import DataLoader
@@ -17,7 +17,7 @@ DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/'
 n_grasps = [10]  # [10, 7, 5, 3, 1]
-models = [IterativeRCNN]  # TwoLayerConv, , TwoLayerWDropout
+models = [SilhouetteRNN]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
@@ -30,7 +30,7 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 batch_size = 32
 
 TRAIN_MODEL = True
-TEST_MODEL = True
+TEST_MODEL = False
 USE_PREVIOUS = False
 COMPARE_LOSSES = False
 ITERATIVE = True
@@ -73,7 +73,7 @@ for ModelArchitecture in models:
             print(f'Total params: {(sum(p.numel() for p in model.parameters()) / 1000000.0):.2f}M')
 
             if USE_PREVIOUS:
-                model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_{num_grasps}grasps_model_state.pt'
+                model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_dropout_model_state.pt'
                 if exists(model_state):
                     model.load_state_dict(torch.load(model_state))
             # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
@@ -86,7 +86,7 @@ for ModelArchitecture in models:
                 batch_params, batch_losses = learn_iter_model(model, train_loader, test_loader, optimizer, criterion,
                                                               classes,
                                                               n_epochs=1500,
-                                                              max_patience=50,
+                                                              max_patience=75,
                                                               save_folder=MODEL_SAVE_FOLDER,
                                                               save=True,
                                                               show=True)
@@ -94,7 +94,7 @@ for ModelArchitecture in models:
                 batch_params, batch_losses = train_RNN(model, train_loader, test_loader, optimizer, criterion,
                                                        classes, batch_size,
                                                        n_epochs=1000,
-                                                       max_patience=50,
+                                                       max_patience=100,
                                                        save_folder=MODEL_SAVE_FOLDER,
                                                        save=True,
                                                        show=True)
@@ -118,8 +118,11 @@ for ModelArchitecture in models:
             model.eval()
             criterion = nn.CrossEntropyLoss()
             if ITERATIVE:
-                true_labels, pred_labels = test_iter_model(model, test_loader, classes, criterion)
+                true_labels, pred_labels, grasp_true, grasp_pred = test_iter_model(model, val_loader, classes, criterion)
                 plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
+                for grasp in grasp_true:
+
+                    plot_confusion(grasp_pred[grasp], grasp_true[grasp], model_name, int(grasp), iter=True)
             else:
                 train_data, train_labels, test_data, test_labels, silhouette_score = test_model(
                     model, train_loader, test_loader, classes, num_grasps, compare=False)
