@@ -2,20 +2,47 @@ import torch
 import torch.nn as nn
 
 
+class SilhouetteRNN(nn.Module):
+
+    def __init__(self):
+        super(SilhouetteRNN, self).__init__()
+
+        self.lin1 = nn.Linear(83, 64)
+        self.linOut = nn.Linear(64, 7)
+        self.silOut = nn.Linear(64, 3)
+        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
+        self.drop = nn.Dropout(0.15)
+
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x, hidden):
+        combined = torch.cat((x, hidden), -1)
+        combined = self.drop(combined)
+        h1 = self.lin1(combined)
+        h1 = self.relu(h1)
+        output = self.linOut(h1)
+        sil_out = self.silOut(h1)
+        return output, h1, sil_out
+
+
 class IterativeRCNN(nn.Module):
 
     def __init__(self):
         super(IterativeRCNN, self).__init__()
 
         self.conv = nn.Sequential(
-            nn.Conv1d(1, 16, 19, padding=0),
+            nn.Conv1d(1, 32, 19, padding=0),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            nn.Conv1d(32, 16, 5, padding=0),
             nn.BatchNorm1d(16),
             nn.ReLU(),
-            nn.Conv1d(16, 8, 5, padding=0),
+            nn.Conv1d(16, 8, 3, padding=0),
             nn.BatchNorm1d(8),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(232, 32)
+            nn.Linear(216, 32)
         )
         self.pred_out = nn.Linear(32, 7)
         self.relu = nn.ReLU()
@@ -37,7 +64,7 @@ class IterativeRNN(nn.Module):
     def __init__(self):
         super(IterativeRNN, self).__init__()
 
-        self.lin1 = nn.Linear(83, 128)
+        self.lin1 = nn.Linear(83, 64)  # best params found at 128, 200, 64 neurons
         self.lin2 = nn.Linear(128, 200)
         self.lin3 = nn.Linear(200, 64)
         self.linOut = nn.Linear(64, 7)
@@ -52,14 +79,14 @@ class IterativeRNN(nn.Module):
         combined = self.drop(combined)
         h1 = self.lin1(combined)
         h1 = self.relu(h1)
-        h2 = self.lin2(h1)
-        h2 = self.tanh(h2)
-        h3 = self.lin3(h2)
-        h3 = self.tanh(h3)
-        output = self.linOut(h3)
-        output = self.tanh(output)
-        output = self.softmax(output)
-        return output, h3
+        # h2 = self.lin2(h1)
+        # h2 = self.relu(h2)
+        # h3 = self.lin3(h2)
+        # h3 = self.relu(h3)
+        output = self.linOut(h1)
+        # output = self.tanh(output)
+        # output = self.softmax(output)
+        return output, h1
 
 
 class IterativeFFNN(nn.Module):
