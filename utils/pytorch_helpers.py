@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-# import torch.nn as nn
+import torch.nn as nn
 import csv
 import matplotlib.pyplot as plt
 import copy
@@ -135,6 +135,15 @@ def model_init(model, n_grasps=None):
            best_params
 
 
+def get_nth_key(dictionary, n=0):
+    if n < 0:
+        n += len(dictionary)
+    for i, key in enumerate(dictionary.keys()):
+        if i == n:
+            return key
+    raise IndexError("dictionary index out of range")
+
+
 def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, batch_size, n_epochs=50,
               max_patience=25, save_folder='./', save=True, show=True):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
@@ -147,8 +156,10 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
 
         model.train()
         for data in train_loader:
+            # Take each training batch and process
             frame = data["data"].to(device)  # .reshape(32, 10, 19)
             frame_labels = data["labels"]
+            frame_loss = 0
 
             # randomly switch in zero rows to vary the number of grasps being identified
             padded_start = np.random.randint(1, 11)
@@ -156,28 +167,40 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
             nul_rows = frame.sum(dim=2) != 0
             frame = frame[:, :padded_start, :]
             enc_lab = encode_labels(frame_labels, classes).to(device)
-            hidden = torch.zeros(frame.size(0), 32).to(device)
+            # convert frame_labels to numeric and allocate to tensor to silhouette score
+            le = preprocessing.LabelEncoder()
+            frame_labels_num = le.fit_transform(frame_labels)
+
+            hidden = torch.zeros(frame.size(0), 64).to(device)
             # optimizer.zero_grad()
             if model_name == 'IterativeRCNN':
                 frame = frame.reshape(frame.size(0), -1, 1, 19)
                 hidden = hidden.reshape(frame.size(0), 1, -1)
+            optimizer.zero_grad()
 
+            # iterate through each grasp and run the model
             for i in range(padded_start):
-                optimizer.zero_grad()
-                output, hidden = model(frame[:, i, :], hidden)
-                loss = criterion(output, enc_lab)
-                loss.backward()
-                hidden = hidden.detach()
+                if model_name == 'SilhouetteRNN':
+                    output, hidden, embeddings = model(frame[:, i, :], hidden)
+                    loss1 = criterion(output, enc_lab)
+                    # calculate the silhouette score at the bottleneck and add it to the loss value
+                    loss2 = silhouette.silhouette.score(embeddings, enc_lab, loss=True) # torch.as_tensor(frame_labels_num)
+                    loss = loss1 + 2 * loss2
+                else:
+                    output, hidden = model(frame[:, i, :], hidden)
+                    loss = criterion(output, enc_lab)
                 if model_name == 'IterativeRCNN':
                     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
 
-                optimizer.step()
-            # output = output.reshape((-1, 7))
+                frame_loss += loss
+            frame_loss.backward()
+            optimizer.step()
+            output = nn.functional.softmax(output, dim=-1)
 
             _, inds = output.max(dim=1)
             frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
             train_accuracy += frame_accuracy
-            train_loss += loss
+            train_loss += frame_loss / padded_start
             cycle += 1
 
         train_loss = train_loss.detach().cpu() / len(train_loader)
@@ -188,28 +211,39 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
         grasp_accuracy = torch.zeros((10, 2)).to(device)
         model.eval()
         for data in test_loader:
+            # Take each test batch and run the model
             frame = data["data"].to(device)  # .reshape(32, 10, 19)
             frame_labels = data["labels"]
-
+            frame_loss = 0
             # randomly switch in zero rows to vary the number of grasps being identified
             padded_start = np.random.randint(1, 11)
             frame[:, padded_start:, :] = 0
             nul_rows = frame.sum(dim=2) != 0
             frame = frame[:, :padded_start, :]
             enc_lab = encode_labels(frame_labels, classes).to(device)
-            hidden = torch.zeros(frame.size(0), 32).to(device)
+            hidden = torch.zeros(frame.size(0), 64).to(device)
 
             if model_name == 'IterativeRCNN':
                 frame = frame.reshape(frame.size(0), -1, 1, 19)
                 hidden = hidden.reshape(frame.size(0), 1, -1)
 
+            # Run the model through each grasp
             for i in range(padded_start):
-                output, hidden = model(frame[:, i, :], hidden)
+                if model_name == 'SilhouetteRNN':
+                    output, hidden, embeddings = model(frame[:, i, :], hidden)
+                    loss1 = criterion(output, enc_lab)
+                    # calculate the silhouette score at the bottleneck and add it to the loss value
+                    loss2 = silhouette.silhouette.score(embeddings, enc_lab, loss=True) # torch.as_tensor(frame_labels_num)
+                    loss3 = loss1 + 2 * loss2
+                else:
+                    output, hidden = model(frame[:, i, :], hidden)
+                    loss3 = criterion(output, enc_lab)
                 hidden = hidden.detach()
                 if model_name == 'IterativeRCNN':
                     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
-                loss2 = criterion(output, enc_lab)
-            test_loss += loss2
+
+                frame_loss += loss3
+            test_loss += frame_loss / padded_start
             _, inds = output.max(dim=1)
             frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
             test_accuracy += frame_accuracy
@@ -378,8 +412,9 @@ def test_iter_model(model, test_loader, classes, criterion):
     test_loss = 0.0
     test_accuracy = 0.0
     grasp_accuracy = torch.zeros((10, 2)).to(device)
-    confusion_ints = torch.zeros((7, 7)).to(device)
-    confusion_perc = torch.zeros((7, 7)).to(device)
+    confusion_ints = torch.zeros((10, 7, 7)).to(device)
+    grasp_true_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
+    grasp_pred_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
     true_labels = []
     pred_labels = []
 
@@ -395,8 +430,8 @@ def test_iter_model(model, test_loader, classes, criterion):
         pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
         # run the model and calculate loss
-        if model_name == 'IterativeRNN' or model_name == 'IterativeRNN':
-            hidden = torch.zeros(frame.size(0), 32).to(device)
+        if model_name == 'IterativeRNN' or model_name == 'IterativeRCNN':
+            hidden = torch.zeros(frame.size(0), 64).to(device)
             if model_name == 'IterativeRCNN':
                 frame = frame.reshape(frame.size(0), -1, 1, 19)
                 hidden = hidden.reshape(frame.size(0), 1, -1)
@@ -425,7 +460,12 @@ def test_iter_model(model, test_loader, classes, criterion):
         for n in range(len(enc_lab)):
             row = enc_lab[n]
             col = inds[n]
-            confusion_ints[row, col] += 1
+            confusion_ints[padded_rows_start - 1, row, col] += 1
+            # add the prediction and true to the grasp_labels dict
+            grasp_num = get_nth_key(grasp_pred_labels, padded_rows_start-1)
+            grasp_true_labels[grasp_num].append(classes[row])
+            grasp_pred_labels[grasp_num].append(classes[col])
+
         pred_labels.extend(decode_labels(inds, classes))
         true_labels.extend(frame_labels)
 
@@ -438,7 +478,7 @@ def test_iter_model(model, test_loader, classes, criterion):
     print(f'Grasp accuracy: {grasp_accuracy}')
     confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=0)
 
-    return true_labels, pred_labels
+    return true_labels, pred_labels, grasp_true_labels, grasp_pred_labels
 
 
 def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
