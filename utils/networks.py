@@ -31,19 +31,13 @@ class IterativeRCNN(nn.Module):
     def __init__(self):
         super(IterativeRCNN, self).__init__()
 
-        self.conv = nn.Sequential(
-            nn.Conv1d(1, 32, 19, padding=0),
-            nn.BatchNorm1d(32),
-            nn.ReLU(),
-            nn.Conv1d(32, 16, 5, padding=0),
-            nn.BatchNorm1d(16),
-            nn.ReLU(),
-            nn.Conv1d(16, 8, 3, padding=0),
-            nn.BatchNorm1d(8),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(216, 32)
-        )
+        self.conv = nn.Conv1d(1, 32, 19, padding=0)
+        self.batch = nn.BatchNorm1d(32)
+        self.relu = nn.ReLU()
+        nn.Conv1d(32, 16, 5, padding=0)
+        nn.Flatten()
+        nn.Linear(216, 32)
+
         self.pred_out = nn.Linear(32, 7)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
