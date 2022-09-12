@@ -4,7 +4,7 @@
 # import os
 # from os.path import exists
 # import csv
-# import pickle
+import pandas as pd
 from utils.pytorch_helpers import *
 from utils.data_handlers import ObjectGraspsDataset
 from torch.utils.data import DataLoader
@@ -17,7 +17,7 @@ DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/'
 n_grasps = [10]  # [10, 7, 5, 3, 1]
-models = [SilhouetteRNN]  # TwoLayerConv, , TwoLayerWDropout
+models = [IterativeRNN]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
@@ -29,8 +29,8 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-TRAIN_MODEL = True
-TEST_MODEL = False
+TRAIN_MODEL = False
+TEST_MODEL = True
 USE_PREVIOUS = False
 COMPARE_LOSSES = False
 ITERATIVE = True
@@ -119,10 +119,23 @@ for ModelArchitecture in models:
             criterion = nn.CrossEntropyLoss()
             if ITERATIVE:
                 true_labels, pred_labels, grasp_true, grasp_pred = test_iter_model(model, val_loader, classes, criterion)
-                plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
-                for grasp in grasp_true:
+                model_file = f'{MODEL_SAVE_FOLDER}{model_name}_labels'
+                # save_params(model_file, true_labels, pred_labels)
 
+                df = pd.DataFrame(columns=["True Values", "Pred Values"])
+                df["True Values"], df["Pred Values"] = true_labels, pred_labels
+                plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
+
+                for grasp in grasp_true:
                     plot_confusion(grasp_pred[grasp], grasp_true[grasp], model_name, int(grasp), iter=True)
+
+                with open(f'{model_file}.csv', 'w') as f:
+                    w = csv.writer(f)
+                    w.writerow(true_labels)
+                    w.writerow(pred_labels)
+                    w.writerow(grasp_true.values())
+                    w.writerow(grasp_pred.values())
+
             else:
                 train_data, train_labels, test_data, test_labels, silhouette_score = test_model(
                     model, train_loader, test_loader, classes, num_grasps, compare=False)
