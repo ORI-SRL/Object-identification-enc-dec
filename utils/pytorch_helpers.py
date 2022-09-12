@@ -184,7 +184,7 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
                     output, hidden, embeddings = model(frame[:, i, :], hidden)
                     loss1 = criterion(output, enc_lab)
                     # calculate the silhouette score at the bottleneck and add it to the loss value
-                    loss2 = silhouette.silhouette.score(embeddings, enc_lab, loss=True) # torch.as_tensor(frame_labels_num)
+                    loss2 = silhouette.silhouette.score(embeddings, enc_lab, loss=True)
                     loss = loss1 + 2 * loss2
                 else:
                     output, hidden = model(frame[:, i, :], hidden)
@@ -238,7 +238,7 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
                 else:
                     output, hidden = model(frame[:, i, :], hidden)
                     loss3 = criterion(output, enc_lab)
-                hidden = hidden.detach()
+
                 if model_name == 'IterativeRCNN':
                     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
 
@@ -430,16 +430,24 @@ def test_iter_model(model, test_loader, classes, criterion):
         pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
         # run the model and calculate loss
-        if model_name == 'IterativeRNN' or model_name == 'IterativeRCNN':
+        if model_name == 'IterativeRNN' or model_name == 'IterativeRCNN' or model_name == 'SilhouetteRNN':
             hidden = torch.zeros(frame.size(0), 64).to(device)
             if model_name == 'IterativeRCNN':
                 frame = frame.reshape(frame.size(0), -1, 1, 19)
                 hidden = hidden.reshape(frame.size(0), 1, -1)
+
             for i in range(padded_rows_start):
                 # optimizer.zero_grad()
-                output, hidden = model(frame[:, i, :], hidden)
-                loss2 = criterion(output, enc_lab)
-                hidden = hidden.detach()
+                if model_name == 'SilhouetteRNN':
+                    output, hidden, embeddings = model(frame[:, i, :], hidden)
+                    loss1 = criterion(output, enc_lab)
+                    # calculate the silhouette score at the bottleneck and add it to the loss value
+                    loss3 = silhouette.silhouette.score(embeddings, enc_lab, loss=True)
+                    loss2 = loss1 + 2 * loss3
+                else:
+                    output, hidden = model(frame[:, i, :], hidden)
+                    loss2 = criterion(output, enc_lab)
+
                 if model_name == 'IterativeRCNN':
                     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
             last_frame = output
