@@ -17,7 +17,7 @@ DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/'
 n_grasps = [10]  # [10, 7, 5, 3, 1]
-models = [IterativeRNN]  # TwoLayerConv, , TwoLayerWDropout
+models = [LSTM]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
@@ -29,7 +29,7 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-TRAIN_MODEL = False
+TRAIN_MODEL = True
 TEST_MODEL = True
 USE_PREVIOUS = False
 COMPARE_LOSSES = False
