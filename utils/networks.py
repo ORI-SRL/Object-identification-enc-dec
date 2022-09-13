@@ -2,6 +2,22 @@ import torch
 import torch.nn as nn
 
 
+class LSTM(nn.Module):  # this takes in the previous prediction to inform the next layer
+
+    def __init__(self):
+        super(LSTM, self).__init__()
+
+        self.lstm = nn.LSTM(input_size=19, hidden_size=64, num_layers=1, batch_first=True)  #, dropout=0.15)
+        self.linOut = nn.Linear(64, 7)
+        self.relu = nn.ReLU()
+
+    def forward(self, x, hidden):
+        output, hidden = self.lstm(x, hidden)
+        # output = self.relu(output)
+        output = self.linOut(output)
+        return output, hidden
+
+
 class SilhouetteRNN(nn.Module):
 
     def __init__(self):
@@ -53,7 +69,7 @@ class IterativeRCNN(nn.Module):
         return output, h_out
 
 
-class IterativeRNN(nn.Module):
+class IterativeRNN(nn.Module):  # this takes in the previous hidden layer output to inform the next layer
 
     def __init__(self):
         super(IterativeRNN, self).__init__()
@@ -73,56 +89,32 @@ class IterativeRNN(nn.Module):
         combined = self.drop(combined)
         h1 = self.lin1(combined)
         h1 = self.relu(h1)
-        # h2 = self.lin2(h1)
-        # h2 = self.relu(h2)
-        # h3 = self.lin3(h2)
-        # h3 = self.relu(h3)
         output = self.linOut(h1)
-        # output = self.tanh(output)
-        # output = self.softmax(output)
         return output, h1
 
 
-class IterativeFFNN(nn.Module):
+class IterativeRNN2(nn.Module):  # this takes in the previous prediction to inform the next layer
 
     def __init__(self):
-        super(IterativeFFNN, self).__init__()
+        super(LSTM, self).__init__()
 
-        self.fc1 = nn.Linear(26, 200)
-        self.fc2 = nn.Linear(200, 200)
-        self.fc3 = nn.Linear(200, 100)
-        self.fc4 = nn.Linear(100, 7)
-        self.drop = nn.Dropout(.15)
+        self.lin1 = nn.Linear(26, 64)  # best params found at 128, 200, 64 neurons
+        self.lin2 = nn.Linear(128, 200)
+        self.lin3 = nn.Linear(200, 64)
+        self.linOut = nn.Linear(64, 7)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
+        self.drop = nn.Dropout(0.15)
 
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x, pred_in):
-
-        next_pred = pred_in
-        output = torch.empty((x.size(0), 0, 7)).to('cuda:0')
-        final = torch.zeros(x.size(0), 1, 7)
-        # for j in range(x.size(-2)):
-        row = x.reshape(x.size(0), 1, x.size(-1))  # [:, j, :]
-
-        #    if torch.sum(row) != 0:
-        #        if j == 0:
-        row = torch.cat((row, pred_in.reshape(x.size(0), 1, 7)), dim=-1)  # concatenate the data with the predictions
-        #        else:
-        #            row = torch.cat((row, next_pred), dim=-1)
-        h1 = self.fc1(row)
-        rel1 = self.relu(h1)
-        h2 = self.fc2(rel1)
-        rel2 = self.relu(h2)
-        h3 = self.fc3(rel2)
-        rel3 = self.relu(h3)
-        h_out = self.fc4(rel3)
-        drop_out = self.drop(h_out)
-        final = self.tanh(drop_out)
-        next_pred = self.softmax(final)
-        output = torch.cat((output, final.reshape(x.size(0), 1, 7)), dim=1)
-        return final.reshape(x.size(0), 7), output
+        combined = torch.cat((x, pred_in), -1)
+        combined = self.drop(combined)
+        h1 = self.lin1(combined)
+        h1 = self.relu(h1)
+        output = self.linOut(h1)
+        return output, output
 
 
 class IterativeCNN(nn.Module):
