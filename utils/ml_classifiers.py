@@ -173,6 +173,7 @@ def plot_confusion(data, labels, model_fit, n_grasps, iter=False):
         cm[row, :] = cm[row, :] / labels.count(unique_labels[row])
     fig = plt.figure()
     fig.set_size_inches(8, 5)
-    cm_display_percentages = sns.heatmap(cm, annot=True, fmt='.2%', cmap='Blues', xticklabels=unique_labels,
+    sns.set(font_scale=1.2)
+    cm_display_percentages = sns.heatmap(cm, annot=True, fmt='.1%', cmap='Blues', xticklabels=unique_labels,
                                          yticklabels=unique_labels, vmin=0, vmax=1).plot()
     # / (len(labels) / len(unique_labels)
