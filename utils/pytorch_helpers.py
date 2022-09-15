@@ -67,6 +67,8 @@ def save_params(filename, loss, params):
     # loop over dictionary keys and values
     for key, val in loss.items():
         # write every key and value to file
+        if torch.is_tensor(val):
+            val = [x.numpy() for x in val]
         w.writerow([key, val])
 
 
