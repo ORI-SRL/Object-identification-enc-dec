@@ -59,3 +59,46 @@ def plot_silhouette(file_path, model, n_grasps):
             # plt.show()
             fig = plt.gcf()
             fig.set_size_inches(8, 5)
+
+
+def plot_losses(file, model):
+    file_name = f'{file}.csv'
+    losses_data = []
+    if exists(file_name):
+        with open(file_name, mode='r') as infile:
+            reader = csv.reader(infile)
+            for row in reader:
+                if len(row) > 0:
+                    data_str_long = row[1][1:-1]
+                    data_str = data_str_long.split(', ')
+                    for idx, data_entry in enumerate(data_str):
+                        if "tensor" in data_entry:
+                            t_start = data_entry.find('(')
+                            t_end = data_entry.find(')')
+                            data_str[idx] = float(data_entry[t_start+1:t_end])
+                        else:
+                            data_str = [float(x) for x in data_str]
+                    # print(row)
+                    losses_data.append(data_str)
+
+                # loss_dict[row[0]] = data_float
+    train_loss = losses_data[0]
+    test_loss = losses_data[1]
+    type_train = losses_data[2]
+    type_test = losses_data[3]
+    fig, [ax1, ax2] = plt.subplots(1, 2)
+    x = list(range(1, len(test_loss) + 1))
+    ax1.plot(x, train_loss, label="Training loss")
+    ax1.plot(x, test_loss, label="Testing loss")
+    # ax1.plot(best_loss['epoch'], best_loss['train_loss'])
+    # ax1.plot(best_loss['epoch'], best_loss['test_loss'])
+    ax1.set_xlabel('epoch #')
+    ax1.set_ylabel('Loss')
+    ax1.legend()
+    ax2.plot(type_train, label=f"Training Accuracy")
+    ax2.plot(type_test, label=f"Testing Accuracy")
+    # ax2.plot(best_loss['epoch'], best_loss['train_acc'])
+    # ax2.plot(best_loss['epoch'], best_loss['test_acc'])
+    ax2.set_xlabel('epoch #')
+    ax2.set_ylabel('Accuracy')
+    ax2.legend()
