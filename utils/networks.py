@@ -74,14 +74,11 @@ class IterativeRNN(nn.Module):  # this takes in the previous hidden layer output
     def __init__(self):
         super(IterativeRNN, self).__init__()
 
-        self.lin1 = nn.Linear(83, 64)  # best params found at 128, 200, 64 neurons
-        self.lin2 = nn.Linear(128, 200)
-        self.lin3 = nn.Linear(200, 64)
+        self.lin1 = nn.Linear(83, 64)
         self.linOut = nn.Linear(64, 7)
         self.relu = nn.ReLU()
-        self.tanh = nn.Tanh()
         self.drop = nn.Dropout(0.15)
-
+        self.norm = nn.BatchNorm1d(64)
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x, hidden):
@@ -96,11 +93,9 @@ class IterativeRNN(nn.Module):  # this takes in the previous hidden layer output
 class IterativeRNN2(nn.Module):  # this takes in the previous prediction to inform the next layer
 
     def __init__(self):
-        super(LSTM, self).__init__()
+        super(IterativeRNN2, self).__init__()
 
         self.lin1 = nn.Linear(26, 64)  # best params found at 128, 200, 64 neurons
-        self.lin2 = nn.Linear(128, 200)
-        self.lin3 = nn.Linear(200, 64)
         self.linOut = nn.Linear(64, 7)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
@@ -114,7 +109,8 @@ class IterativeRNN2(nn.Module):  # this takes in the previous prediction to info
         h1 = self.lin1(combined)
         h1 = self.relu(h1)
         output = self.linOut(h1)
-        return output, output
+        pred_back = output  # self.softmax(output)
+        return output, pred_back
 
 
 class IterativeCNN(nn.Module):
