@@ -94,7 +94,7 @@ def plot_model(best_loss, train_loss, test_loss, type_train, type_test, type):
 def early_stopping(loss_dict, patience, max_patience, test_loss, train_loss, train_acc, test_acc, epoch, model,
                    best_params):
     early_stop = False
-    if loss_dict['test_loss'] is None or test_loss < loss_dict['test_loss']:
+    if loss_dict['test_acc'] is None or test_acc > loss_dict['test_acc']:
 
         loss_dict = {'train_loss': train_loss, 'test_loss': test_loss, 'train_acc': train_acc,
                      'test_acc': test_acc, 'epoch': epoch}
@@ -150,6 +150,7 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
               max_patience=25, save_folder='./', save=True, show=True):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
     best_params = model_init(model)
+    hidden_size = 7
 
     for epoch in range(1, n_epochs + 1):
         train_loss, test_loss, train_accuracy, test_accuracy = 0.0, 0.0, 0.0, 0.0
@@ -173,10 +174,14 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
             le = preprocessing.LabelEncoder()
             frame_labels_num = le.fit_transform(frame_labels)
 
-            hidden = torch.full((frame.size(0), 7), 1 / 7).to(device)  # torch.zeros(frame.size(0), 64).to(device)
-            # optimizer.zero_grad()
-            if model_name == 'LSTM':  # input a vanilla starting layer output
+            # set the first hidden layer as a vanilla prediction or zeros
+            if model_name == 'IterativeRNN2':
+                hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
+            elif model_name == 'LSTM':  # input a vanilla starting layer output
                 hidden = (torch.zeros(1, 64).to(device), torch.zeros(1, 64).to(device))
+            else:
+                hidden = torch.zeros(frame.size(0), hidden_size).to(device)
+            # optimizer.zero_grad()
 
             if model_name == 'IterativeRCNN':
                 frame = frame.reshape(frame.size(0), -1, 1, 19)
@@ -228,10 +233,14 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
             nul_rows = frame.sum(dim=2) != 0
             frame = frame[:, :padded_start, :]
             enc_lab = encode_labels(frame_labels, classes).to(device)
-            hidden = torch.full((frame.size(0), 7), 1 / 7).to(device)  # torch.zeros(frame.size(0), 64).to(device)
 
-            if model_name == 'LSTM':  # input a vanilla starting layer output
+            # set the first hidden layer as a vanilla prediction or zeros
+            if model_name == 'IterativeRNN2':
+                hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
+            elif model_name == 'LSTM':  # input a vanilla starting layer output
                 hidden = (torch.zeros(1, 64).to(device), torch.zeros(1, 64).to(device))
+            else:
+                hidden = torch.zeros(frame.size(0), hidden_size).to(device)
 
             if model_name == 'IterativeRCNN':
                 frame = frame.reshape(frame.size(0), -1, 1, 19)
@@ -427,6 +436,7 @@ def test_iter_model(model, test_loader, classes, criterion):
     grasp_pred_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
     true_labels = []
     pred_labels = []
+    hidden_size = 7
 
     for data in test_loader:
         # take the next frame from the data_loader and process it through the model
@@ -441,10 +451,13 @@ def test_iter_model(model, test_loader, classes, criterion):
 
         # run the model and calculate loss
         if model_name == 'IterativeRNN' or 'IterativeRCNN' or 'SilhouetteRNN' or 'IterativeRNN2' or 'LSTM':
-            hidden = torch.full((frame.size(0), 7), 1 / 7).to(device)  # torch.zeros(frame.size(0), 64).to(device)
-
-            if model_name == 'LSTM':  # input a vanilla starting layer output
+            # set the first hidden layer as a vanilla prediction or zeros
+            if model_name == 'IterativeRNN2':
+                hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
+            elif model_name == 'LSTM':  # input a vanilla starting layer output
                 hidden = (torch.zeros(1, 64).to(device), torch.zeros(1, 64).to(device))
+            else:
+                hidden = torch.zeros(frame.size(0), hidden_size).to(device)
 
             if model_name == 'IterativeRCNN':
                 frame = frame.reshape(frame.size(0), -1, 1, 19)
