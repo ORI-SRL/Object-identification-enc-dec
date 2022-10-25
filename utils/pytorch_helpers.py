@@ -492,8 +492,7 @@ def test_iter_model(model, test_loader, classes, criterion):
                 if model_name == 'IterativeRCNN':
                     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
             # hidden.backward(torch.ones_like(hidden), retain_graph=True)
-            hidden.backward(torch.ones_like(hidden))
-            # pred_saliency, _ = torch.max(output.grad.data.abs(), dim=1)
+            hidden.backward(torch.ones_like(hidden))  # clear previous grads
             last_frame = output
         else:
             last_frame, output = model(frame, pred_in)
@@ -507,6 +506,8 @@ def test_iter_model(model, test_loader, classes, criterion):
         test_accuracy += frame_accuracy
         grasp_accuracy[padded_rows_start - 1, 1] += 1
         grasp_accuracy[padded_rows_start - 1, 0] += frame_accuracy
+
+        # concatenate the mean salience for each variable
         frame_salience = torch.cat((frame_salience, salience / len(inds)))
 
 

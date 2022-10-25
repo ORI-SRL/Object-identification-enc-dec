@@ -115,6 +115,7 @@ class IterativeRNN2(nn.Module):  # this takes in the previous prediction to info
         output = self.linOut(h1)
         pred_back = output  # self.softmax(output)
         if not self.training:
+            # retain to allow for taking backward on each loop
             pred_back.backward(torch.ones_like(pred_back), retain_graph=True)
             saliency = torch.mean(combined.grad.data.abs(), dim=0)
 
