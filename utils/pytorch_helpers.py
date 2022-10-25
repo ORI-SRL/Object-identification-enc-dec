@@ -156,7 +156,7 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
         train_loss, test_loss, train_accuracy, test_accuracy = 0.0, 0.0, 0.0, 0.0
         cycle = 0
         confusion_ints = torch.zeros((7, 7)).to(device)
-
+        grasp_accuracy = torch.zeros((10, 2)).to(device)
         model.train()
         for data in train_loader:
             # Take each training batch and process
@@ -201,10 +201,10 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
                     output, hidden = model(frame[:, i, :], hidden)
                     loss = criterion(output, enc_lab)
 
-                if model_name == 'IterativeRCNN':
-                    hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
+                # if model_name == 'IterativeRCNN':
+                #     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
 
-                frame_loss += loss
+                frame_loss += loss  # * np.exp(- i/11)  #loss_weights[i]  #
             frame_loss.backward()
             optimizer.step()
             output = nn.functional.softmax(output, dim=-1)
@@ -212,6 +212,8 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
             _, inds = output.max(dim=1)
             frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
             train_accuracy += frame_accuracy
+            grasp_accuracy[padded_start - 1, 1] += 1
+            grasp_accuracy[padded_start - 1, 0] += frame_accuracy
             train_loss += frame_loss / padded_start
             cycle += 1
 
@@ -219,6 +221,8 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
         train_accuracy = train_accuracy / len(train_loader)
         train_loss_out.append(train_loss)
         train_acc_out.append(train_accuracy)
+        grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
+        grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
 
         grasp_accuracy = torch.zeros((10, 2)).to(device)
         model.eval()
@@ -295,7 +299,7 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
         loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_accuracy': train_acc_out,
                      'testing_accuracy': test_acc_out}
     if save and best_params is not None:
-        model_file = f'{save_folder}{model_name}_dropout'
+        model_file = f'{save_folder}{model_name}_weighted_loss'
         save_params(model_file, loss_dict, best_params)
 
     if show:
