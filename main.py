@@ -16,8 +16,8 @@ import numpy as np
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/'
-n_grasps = [10]  # [10, 7, 5, 3, 1]
-models = [LSTM]  # TwoLayerConv, , TwoLayerWDropout
+n_grasps = [10, 7, 5, 3, 1]  # [10, 7, 5, 3, 1]
+models = [IterativeRNN2]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
@@ -29,10 +29,10 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-TRAIN_MODEL = True
+TRAIN_MODEL = False
 TEST_MODEL = True
-USE_PREVIOUS = False
-COMPARE_LOSSES = False
+USE_PREVIOUS = True
+COMPARE_LOSSES = True
 ITERATIVE = True
 RNN = True
 
@@ -94,7 +94,7 @@ for ModelArchitecture in models:
                 batch_params, batch_losses = train_RNN(model, train_loader, test_loader, optimizer, criterion,
                                                        classes, batch_size,
                                                        n_epochs=1000,
-                                                       max_patience=100,
+                                                       max_patience=75,
                                                        save_folder=MODEL_SAVE_FOLDER,
                                                        save=True,
                                                        show=True)
@@ -159,7 +159,10 @@ if COMPARE_LOSSES:
         model = ModelArchitecture()
         # print(f'{model.__class__.__name__}_{n_grasps}_grasps')
         loss_file = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}'  # _{num_grasps}_losses.csv'
-        plot_silhouette(loss_file, model, n_grasps)
+        if ITERATIVE:
+            plot_losses(loss_file, model)
+        else:
+            plot_silhouette(loss_file, model, n_grasps)
         plt.show()
         '''for num_grasps in n_grasps:
             model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_{num_grasps}grasps_model_state.pt'
@@ -173,4 +176,5 @@ if COMPARE_LOSSES:
     print(sil_comparison_dict)'''
     with open(f'{MODEL_SAVE_FOLDER}silhouette_comparison.pkl', 'wb') as f:
         pickle.dump(sil_comparison_dict, f)
+plt.show()
 print('finished')
