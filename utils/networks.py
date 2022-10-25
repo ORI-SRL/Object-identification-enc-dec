@@ -7,7 +7,7 @@ class LSTM(nn.Module):  # this takes in the previous prediction to inform the ne
     def __init__(self):
         super(LSTM, self).__init__()
 
-        self.lstm = nn.LSTM(input_size=19, hidden_size=64, num_layers=1, batch_first=True)  #, dropout=0.15)
+        self.lstm = nn.LSTM(input_size=19, hidden_size=64, num_layers=1, batch_first=True)  # , dropout=0.15)
         self.linOut = nn.Linear(64, 7)
         self.relu = nn.ReLU()
 
@@ -104,13 +104,21 @@ class IterativeRNN2(nn.Module):  # this takes in the previous prediction to info
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x, pred_in):
+
         combined = torch.cat((x, pred_in), -1)
-        combined = self.drop(combined)
-        h1 = self.lin1(combined)
+        if not self.training:
+            combined = combined.detach()  #
+            combined.requires_grad_()
+        drop = self.drop(combined)
+        h1 = self.lin1(drop)
         h1 = self.relu(h1)
         output = self.linOut(h1)
         pred_back = output  # self.softmax(output)
-        return output, pred_back
+        if not self.training:
+            pred_back.backward(torch.ones_like(pred_back), retain_graph=True)
+            saliency = torch.mean(combined.grad.data.abs(), dim=0)
+
+        return output, pred_back, saliency
 
 
 class IterativeCNN(nn.Module):
