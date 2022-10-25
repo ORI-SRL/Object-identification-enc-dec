@@ -441,6 +441,9 @@ def test_iter_model(model, test_loader, classes, criterion):
     true_labels = []
     pred_labels = []
     hidden_size = 7
+    sm = nn.Softmax(dim=1)
+    salience = torch.zeros((1, 19+hidden_size))
+    frame_salience = torch.zeros((0, 19 + hidden_size))
 
     for data in test_loader:
         # take the next frame from the data_loader and process it through the model
@@ -476,11 +479,21 @@ def test_iter_model(model, test_loader, classes, criterion):
                     loss3 = silhouette.silhouette.score(embeddings, enc_lab, loss=True)
                     loss2 = loss1 + 2 * loss3
                 else:
-                    output, hidden = model(frame[:, i, :], hidden)
-                    loss2 = criterion(output, enc_lab)
+                    output, hidden, sal = model(frame[:, i, :], hidden)
+
+                    loss2 = criterion(hidden, enc_lab)
+                    # examine the confidence of each final grasp by taking the maximum value of the softmax output
+                    dist = sm(hidden)
+
+                    if model_name == 'IterativeRNN2':
+                        # sum the salience over each frame
+                        salience += sal.detach().to("cpu")
 
                 if model_name == 'IterativeRCNN':
                     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
+            # hidden.backward(torch.ones_like(hidden), retain_graph=True)
+            hidden.backward(torch.ones_like(hidden))
+            # pred_saliency, _ = torch.max(output.grad.data.abs(), dim=1)
             last_frame = output
         else:
             last_frame, output = model(frame, pred_in)
@@ -494,6 +507,8 @@ def test_iter_model(model, test_loader, classes, criterion):
         test_accuracy += frame_accuracy
         grasp_accuracy[padded_rows_start - 1, 1] += 1
         grasp_accuracy[padded_rows_start - 1, 0] += frame_accuracy
+        frame_salience = torch.cat((frame_salience, salience / len(inds)))
+
 
         # use indices of objects to form confusion matrix
         for n in range(len(enc_lab)):
@@ -516,7 +531,7 @@ def test_iter_model(model, test_loader, classes, criterion):
     grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
     print(f'Grasp accuracy: {grasp_accuracy}')
     confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=0)
-
+    sal_mean = torch.mean(frame_salience, dim=0)
     return true_labels, pred_labels, grasp_true_labels, grasp_pred_labels
 
 
