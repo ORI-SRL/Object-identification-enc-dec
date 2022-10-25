@@ -49,24 +49,24 @@ class IterativeRCNN(nn.Module):
 
         self.conv = nn.Conv1d(1, 32, 19, padding=0)
         self.batch = nn.BatchNorm1d(32)
+        self.drop = nn.Dropout(0.15)
         self.relu = nn.ReLU()
-        nn.Conv1d(32, 16, 5, padding=0)
-        nn.Flatten()
-        nn.Linear(216, 32)
-
+        self.flat = nn.Flatten()
+        self.hid1 = nn.Linear(256, 32)
         self.pred_out = nn.Linear(32, 7)
-        self.relu = nn.ReLU()
-        self.tanh = nn.Tanh()
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x, prev_hidden):
         combined = torch.cat((x, prev_hidden), -1)
         c1 = self.conv(combined)
-        h_out = self.relu(c1)
-        output = self.pred_out(c1)
-        output = self.relu(output)
-        output = self.softmax(output)
-        return output, h_out
+        c1 = self.drop(c1)
+        h1 = self.relu(c1)
+        flat = self.flat(h1)
+        h_out = self.hid1(flat)
+        output = self.pred_out(h_out)
+        pred_back = self.softmax(self.relu(output))
+        # output = self.softmax(output)
+        return output, pred_back.unsqueeze(1)  # h_out
 
 
 class IterativeRNN(nn.Module):  # this takes in the previous hidden layer output to inform the next layer
