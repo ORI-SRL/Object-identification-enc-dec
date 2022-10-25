@@ -34,12 +34,15 @@ for r = 1:size(time_acc,1)
 end
 % plot bar charts 
 figure
-d = boxplot(obj_diffs); ax = gca;
+d = boxplot(obj_diffs); ax = gca; 
+ax.XLabel.String = 'Classification deltas'; ax.YLabel.String = 'Percentage points / %';
+ax.XLabel.FontSize = 16; ax.YLabel.FontSize = 16;
+ax.XAxis.FontSize = 12; ax.YAxis.FontSize = 12;
 %boxplot(time_acc(:,2:end)', Objects); ax = gca; ax.YLim = [0, 105];
 figure
 hold on
 for r = 1:size(disc_bars,1)
-    b = bar(Objects(r), disc_bars(r,:)); %err, 'vertical', 'b.'
+    b = bar(Objects(r), disc_bars(r,:)); %obj_diffs(r,2:end)); %err, 'vertical', 'b.'
     if r == 1
         for c = 1:size(b(:),1)
             Colour_pool(c,:) = get(b(c),'FaceColor');
@@ -50,6 +53,11 @@ for r = 1:size(disc_bars,1)
     end
         
 end
+yline(85, 'k--', 'LineWidth',2)
+ax = gca; 
+ax.XLabel.String = 'Objects'; ax.YLabel.String = 'Classification Accuracy / %';
+ax.XLabel.FontSize = 16; ax.YLabel.FontSize = 16;
+ax.XAxis.FontSize = 12; ax.YAxis.FontSize = 12;
 figure
 m = bar(Objects, max(time_acc, [], 2)); 
 
