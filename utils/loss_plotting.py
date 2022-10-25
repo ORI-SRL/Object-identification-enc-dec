@@ -9,13 +9,14 @@ import numpy as np
 def plot_silhouette(file_path, model, n_grasps):
     model_name = model.__class__.__name__
     loss_dict = dict()
+    f_size = 16
     fig, [ax1, ax2] = plt.subplots(1, 2)
-    ax1.set_title('Losses')
-    ax1.set_ylabel('Loss')
-    ax1.set_xlabel('Epoch')
-    ax2.set_title('Silhouette score')
-    ax2.set_xlabel('Epoch')
-    ax2.set_ylabel('Silhouette score')
+    ax1.set_title('Losses', fontsize=f_size + 4)
+    ax1.set_ylabel('Loss', fontsize=f_size)
+    ax1.set_xlabel('Epoch', fontsize=f_size)
+    ax2.set_title('Silhouette score', fontsize=f_size + 4)
+    ax2.set_xlabel('Epoch', fontsize=f_size)
+    ax2.set_ylabel('Silhouette score', fontsize=f_size)
     colours = ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8']
     cIdx = 0
 
@@ -45,20 +46,24 @@ def plot_silhouette(file_path, model, n_grasps):
             epochs = np.linspace(1, len(train_loss), len(train_loss))
             max_silhouette = max(test_sil_score)
             max_sil_idx = np.argmax(test_sil_score)
+            plt.rcParams.update({'font.size': 12})
 
-            ax1.plot(epochs, train_loss,  '--', color=colours[cIdx], label=f'{num_grasps} Grasps Training')
+            ax1.plot(epochs, train_loss, '--', color=colours[cIdx], label=f'{num_grasps} Grasps Training')
             ax1.plot(epochs, test_loss, '-', color=colours[cIdx], label=f'{num_grasps} Grasps Validation')
-            cIdx += 1
-            ax1.legend()
+            ax1.legend(prop={"size": 12})
             ax2.plot(epochs, train_sil_score, '--', color=colours[cIdx], label=f'{num_grasps} Grasps Training')
-            ax2.plot(epochs, test_sil_score, '-', color=colours[cIdx],  label=f'{num_grasps} Grasps Testing')
+            ax2.plot(epochs, test_sil_score, '-', color=colours[cIdx], label=f'{num_grasps} Grasps Testing')
             ax2.scatter(max_sil_idx, max_silhouette, color=colours[cIdx])
             ax2.scatter(max_sil_idx, max_silhouette, color=colours[cIdx])
+            cIdx += 1
             # ax2.legend()
             # fig.suptitle('Three Layer Convolution with Batch Norm, Losses and Silhouette Score')
             # plt.show()
             fig = plt.gcf()
             fig.set_size_inches(8, 5)
+    for label in (ax1.get_xticklabels() + ax1.get_yticklabels() + ax2.get_xticklabels() + ax2.get_yticklabels()):
+        label.set_fontsize(14)
+    plt.show()
 
 
 def plot_losses(file, model):
@@ -75,7 +80,7 @@ def plot_losses(file, model):
                         if "tensor" in data_entry:
                             t_start = data_entry.find('(')
                             t_end = data_entry.find(')')
-                            data_str[idx] = float(data_entry[t_start+1:t_end])
+                            data_str[idx] = float(data_entry[t_start + 1:t_end])
                         else:
                             data_str = [float(x) for x in data_str]
                     # print(row)
