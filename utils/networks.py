@@ -106,20 +106,23 @@ class IterativeRNN2(nn.Module):  # this takes in the previous prediction to info
     def forward(self, x, pred_in):
 
         combined = torch.cat((x, pred_in), -1)
-        if not self.training:
-            combined = combined.detach()  #
-            combined.requires_grad_()
+        # if not self.training:
+            # LUCA NOTE: you can't Detach a layer and expect pytorch to comput the gradient.
+            # Backprop can only be computed on notes that are connected to the graph of the network
+            # combined = combined.detach()
+            # combined.requires_grad_()
         drop = self.drop(combined)
         h1 = self.lin1(drop)
         h1 = self.relu(h1)
         output = self.linOut(h1)
-        pred_back = output  # self.softmax(output)
-        if not self.training:
-            # retain to allow for taking backward on each loop
-            pred_back.backward(torch.ones_like(pred_back), retain_graph=True)
-            saliency = torch.mean(combined.grad.data.abs(), dim=0)
+        # pred_back = output  # self.softmax(output)
+        # if not self.training:
+        # LUCA NOTE: it's better to do all this work in the main, outside the network
+        #     # retain to allow for taking backward on each loop
+        #     pred_back.backward(torch.ones_like(pred_back), retain_graph=True)
+        #     saliency = torch.mean(combined.grad.data.abs(), dim=0)
 
-        return output, pred_back, saliency
+        return output #, pred_back, saliency
 
 
 class IterativeCNN(nn.Module):

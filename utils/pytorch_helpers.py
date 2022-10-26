@@ -456,6 +456,9 @@ def test_iter_model(model, test_loader, classes, criterion):
         # set the initial guess as a flat probability for each object
         pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
+        saliencies_hidden = {}
+        saliencies_frm = {}
+
         # run the model and calculate loss
         if model_name == 'IterativeRNN' or 'IterativeRCNN' or 'SilhouetteRNN' or 'IterativeRNN2' or 'LSTM':
             # set the first hidden layer as a vanilla prediction or zeros
@@ -478,6 +481,38 @@ def test_iter_model(model, test_loader, classes, criterion):
                     # calculate the silhouette score at the bottleneck and add it to the loss value
                     loss3 = silhouette.silhouette.score(embeddings, enc_lab, loss=True)
                     loss2 = loss1 + 2 * loss3
+                # LUCA ADD: do the processing here
+                if model_name == 'IterativeRNN2':
+                    frm = copy.deepcopy(frame[:, i, :])
+                    frm.requires_grad_()
+                    hidden.requires_grad_()
+
+                    output = model(frm, hidden)
+
+                    # loss = torch.ones_like(pred_back) - output
+                    # loss.backward()
+
+                    score_max_index = output.argmax(1)   # class output across batches (dim=batch size)
+                    score_max = output[:, score_max_index].sum()  # make sure this vector is dim=batch size, AND NOT A MATRIX
+                    score_max.backward()
+
+                    # frm_saliency = torch.mean(frm.grad.data.abs(), dim=1).detach().cpu().numpy()  # dim=batch size vectors
+                    frm_saliency = torch.max(frm.grad.data.abs(), dim=1)   #  variant n.1
+                    # frm_saliency = frm.grad.data.var()  #  variant n.2
+
+                    hidden_saliency = torch.mean(hidden.grad.data.abs(), dim=1).detach().cpu().numpy()  # dim=batch size vectors
+
+                    # example on how to save stuff
+                    for i_elem in len(saliencies_hidden):
+                        if enc_lab[i_elem] in saliencies_hidden:
+                            saliencies_hidden[enc_lab[i_elem]].append(saliencies_hidden[i_elem])
+                        else:
+                            saliencies_hidden[enc_lab[i_elem]] = [saliencies_hidden[enc_lab[i_elem]]]
+
+                    # todo: same for 'frm'
+
+                    hidden = output
+
                 else:
                     output, hidden, sal = model(frame[:, i, :], hidden)
 
@@ -492,8 +527,8 @@ def test_iter_model(model, test_loader, classes, criterion):
                 if model_name == 'IterativeRCNN':
                     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
             # hidden.backward(torch.ones_like(hidden), retain_graph=True)
-            hidden.backward(torch.ones_like(hidden))  # clear previous grads
-            last_frame = output
+            # hidden.backward(torch.ones_like(hidden))  # clear previous grads
+            # last_frame = output
         else:
             last_frame, output = model(frame, pred_in)
             loss2 = gamma_loss(criterion, output, enc_lab)  # criterion(outputs, enc_lab)
