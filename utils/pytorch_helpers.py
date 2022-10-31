@@ -442,22 +442,21 @@ def test_iter_model(model, test_loader, classes, criterion):
     pred_labels = []
     hidden_size = 7
     sm = nn.Softmax(dim=1)
-    salience = torch.zeros((1, 19+hidden_size))
-    frame_salience = torch.zeros((0, 19 + hidden_size))
+    saliencies_hidden = {}
+    saliencies_frm = {}
+    grasp_sal_hid = {}
+    grasp_sal_frm = {}
 
     for data in test_loader:
         # take the next frame from the data_loader and process it through the model
         frame = data["data"].to(device)
         frame_labels = data["labels"]
         # randomly switch in zero rows to vary the number of grasps being identified
-        padded_rows_start = np.random.randint(1, 11)
+        padded_rows_start = np.random.randint(6, 11)
         frame[:, padded_rows_start:, :] = 0
         enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
         # set the initial guess as a flat probability for each object
         pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
-
-        saliencies_hidden = {}
-        saliencies_frm = {}
 
         # run the model and calculate loss
         if model_name == 'IterativeRNN' or 'IterativeRCNN' or 'SilhouetteRNN' or 'IterativeRNN2' or 'LSTM':
@@ -497,21 +496,32 @@ def test_iter_model(model, test_loader, classes, criterion):
                     score_max.backward()
 
                     # frm_saliency = torch.mean(frm.grad.data.abs(), dim=1).detach().cpu().numpy()  # dim=batch size vectors
-                    frm_saliency = torch.max(frm.grad.data.abs(), dim=1)   #  variant n.1
+                    frm_saliency = torch.mean(frm.grad.data.abs(), dim=1).detach().cpu().numpy()  # variant n.1
                     # frm_saliency = frm.grad.data.var()  #  variant n.2
 
                     hidden_saliency = torch.mean(hidden.grad.data.abs(), dim=1).detach().cpu().numpy()  # dim=batch size vectors
 
                     # example on how to save stuff
-                    for i_elem in len(saliencies_hidden):
-                        if enc_lab[i_elem] in saliencies_hidden:
-                            saliencies_hidden[enc_lab[i_elem]].append(saliencies_hidden[i_elem])
+                    for i_elem in range(len(hidden_saliency)):
+                        if enc_lab[i_elem].item() in saliencies_hidden:
+                            saliencies_hidden[enc_lab[i_elem].item()].append(hidden_saliency[i_elem])
                         else:
-                            saliencies_hidden[enc_lab[i_elem]] = [saliencies_hidden[enc_lab[i_elem]]]
+                            saliencies_hidden[enc_lab[i_elem].item()] = [hidden_saliency[i_elem]]
 
-                    # todo: same for 'frm'
+                    for i_elem in range(len(frm_saliency)):
+                        if enc_lab[i_elem].item() in saliencies_frm:
+                            saliencies_frm[enc_lab[i_elem].item()].append(frm_saliency[i_elem])
+                        else:
+                            saliencies_frm[enc_lab[i_elem].item()] = [frm_saliency[i_elem]]
 
-                    hidden = output
+                    #  get the grasp saliencies to see how they vary through the iterations
+
+                    loss2 = criterion(hidden, enc_lab)
+
+
+
+                    hidden = copy.copy(output)
+                    output.detach()
 
                 else:
                     output, hidden, sal = model(frame[:, i, :], hidden)
@@ -520,15 +530,11 @@ def test_iter_model(model, test_loader, classes, criterion):
                     # examine the confidence of each final grasp by taking the maximum value of the softmax output
                     dist = sm(hidden)
 
-                    if model_name == 'IterativeRNN2':
-                        # sum the salience over each frame
-                        salience += sal.detach().to("cpu")
-
                 if model_name == 'IterativeRCNN':
                     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
             # hidden.backward(torch.ones_like(hidden), retain_graph=True)
             # hidden.backward(torch.ones_like(hidden))  # clear previous grads
-            # last_frame = output
+            last_frame = copy.copy(output)
         else:
             last_frame, output = model(frame, pred_in)
             loss2 = gamma_loss(criterion, output, enc_lab)  # criterion(outputs, enc_lab)
@@ -543,7 +549,7 @@ def test_iter_model(model, test_loader, classes, criterion):
         grasp_accuracy[padded_rows_start - 1, 0] += frame_accuracy
 
         # concatenate the mean salience for each variable
-        frame_salience = torch.cat((frame_salience, salience / len(inds)))
+        # frame_salience = torch.cat((frame_salience, salience / len(inds)))
 
 
         # use indices of objects to form confusion matrix
@@ -567,7 +573,10 @@ def test_iter_model(model, test_loader, classes, criterion):
     grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
     print(f'Grasp accuracy: {grasp_accuracy}')
     confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=0)
-    sal_mean = torch.mean(frame_salience, dim=0)
+    print('Frame Saliencies \t Hidden Saliencies')
+    for i in range(len(saliencies_frm)):
+        print(
+            f'{sum(saliencies_frm[i]) / len(saliencies_frm[i])} \t {sum(saliencies_hidden[i]) / len(saliencies_hidden[i])}')
     return true_labels, pred_labels, grasp_true_labels, grasp_pred_labels
 
 
