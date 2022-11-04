@@ -9,6 +9,7 @@ import random
 from sklearn import preprocessing
 from utils import silhouette
 import scipy.io
+from utils.loss_plotting import plot_saliencies
 
 
 def seed_experiment(seed):
@@ -146,6 +147,44 @@ def get_nth_key(dictionary, n=0):
     raise IndexError("dictionary index out of range")
 
 
+def salience_std(sal):
+    grasp_std = {}
+    grasp_mean = {}
+    norm_data = {}
+    data_max = {}
+    for outers in sal:
+        for inners in sal[outers]:
+            inner_max = max(sal[outers][inners][0:-1])
+            if outers not in data_max:
+                data_max[outers] = 0.0
+            if inner_max > data_max[outers]:
+                data_max[outers] = inner_max
+    for val in sal:
+        for val_inner in sal[val]:
+            data = np.array(sal[val][val_inner])
+            data = data / data_max[val]
+            data_std = np.std(data[0:-1])
+            data_mean = np.mean(data[0:-1])
+            if val in grasp_std:
+                grasp_std[val].append(data_std)
+                grasp_mean[val].append(data_mean)
+            else:
+                grasp_std[val] = [data_std]  # [grasp_var ** 0.5]
+                grasp_mean[val] = [data_mean]
+                # norm_data[val] = {}
+            # norm_data[val][val_inner] = torch.mean(torch.from_numpy((data - data_mean) / data_std))
+
+    return grasp_std, grasp_mean
+
+
+def populate_sal_dicts(sal_dict, sal_vals, obj_labels, idx):
+    if obj_labels[idx].item() in sal_dict:
+        sal_dict[obj_labels[idx].item()].append(sal_vals[idx])
+    else:
+        sal_dict[obj_labels[idx].item()] = [sal_vals[idx]]
+    return sal_dict
+
+
 def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, batch_size, n_epochs=50,
               max_patience=25, save_folder='./', save=True, show=True):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
@@ -256,7 +295,8 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
                     output, hidden, embeddings = model(frame[:, i, :], hidden)
                     loss1 = criterion(output, enc_lab)
                     # calculate the silhouette score at the bottleneck and add it to the loss value
-                    loss2 = silhouette.silhouette.score(embeddings, enc_lab, loss=True) # torch.as_tensor(frame_labels_num)
+                    loss2 = silhouette.silhouette.score(embeddings, enc_lab,
+                                                        loss=True)  # torch.as_tensor(frame_labels_num)
                     loss3 = loss1 + 2 * loss2
                 else:
                     output, hidden = model(frame[:, i, :], hidden)
@@ -444,15 +484,18 @@ def test_iter_model(model, test_loader, classes, criterion):
     sm = nn.Softmax(dim=1)
     saliencies_hidden = {}
     saliencies_frm = {}
-    grasp_sal_hid = {}
-    grasp_sal_frm = {}
+    grasp_sal_hid_dd = {}
+    grasp_sal_frm_dd = {}
+    grasp_sal_hid = torch.zeros((7, 10))
+    grasp_sal_frm = torch.zeros((7, 10))
+    grasp_sal_count = torch.zeros((7, 10))
 
     for data in test_loader:
         # take the next frame from the data_loader and process it through the model
         frame = data["data"].to(device)
         frame_labels = data["labels"]
         # randomly switch in zero rows to vary the number of grasps being identified
-        padded_rows_start = np.random.randint(6, 11)
+        padded_rows_start = np.random.randint(1, 11)
         frame[:, padded_rows_start:, :] = 0
         enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
         # set the initial guess as a flat probability for each object
@@ -491,34 +534,54 @@ def test_iter_model(model, test_loader, classes, criterion):
                     # loss = torch.ones_like(pred_back) - output
                     # loss.backward()
 
-                    score_max_index = output.argmax(1)   # class output across batches (dim=batch size)
-                    score_max = output[:, score_max_index].sum()  # make sure this vector is dim=batch size, AND NOT A MATRIX
+                    # sm_out = sm(output)
+                    score_max_index = output.argmax(1)  # class output across batches (dim=batch size)
+                    score_max = output[range(output.shape[0]),
+                                score_max_index.data].mean()  # make sure this vector is dim=batch size, AND NOT A MATRIX
                     score_max.backward()
 
                     # frm_saliency = torch.mean(frm.grad.data.abs(), dim=1).detach().cpu().numpy()  # dim=batch size vectors
-                    frm_saliency = torch.mean(frm.grad.data.abs(), dim=1).detach().cpu().numpy()  # variant n.1
+                    frm_saliency, _ = torch.max(frm.grad.data.abs(), dim=1)
+                    frm_saliency = frm_saliency.detach().cpu().numpy()  # variant n.1
                     # frm_saliency = frm.grad.data.var()  #  variant n.2
 
-                    hidden_saliency = torch.mean(hidden.grad.data.abs(), dim=1).detach().cpu().numpy()  # dim=batch size vectors
-
+                    hidden_saliency, _ = torch.max(hidden.grad.data.abs(), dim=1)  # dim=batch size vectors
+                    hidden_saliency = hidden_saliency.detach().cpu().numpy()
                     # example on how to save stuff
-                    for i_elem in range(len(hidden_saliency)):
-                        if enc_lab[i_elem].item() in saliencies_hidden:
-                            saliencies_hidden[enc_lab[i_elem].item()].append(hidden_saliency[i_elem])
-                        else:
-                            saliencies_hidden[enc_lab[i_elem].item()] = [hidden_saliency[i_elem]]
-
+                    # tod: sort this into a single dict populating function rather than called each time
+                    # saliences_frm = populate_sal_dict(frm_saliency, enc_lab)
                     for i_elem in range(len(frm_saliency)):
-                        if enc_lab[i_elem].item() in saliencies_frm:
-                            saliencies_frm[enc_lab[i_elem].item()].append(frm_saliency[i_elem])
-                        else:
-                            saliencies_frm[enc_lab[i_elem].item()] = [frm_saliency[i_elem]]
+                        # record general saliencies
+                        # frame salience
+                        saliencies_frm = populate_sal_dicts(saliencies_frm, frm_saliency, enc_lab, i_elem)
+                        saliencies_hidden = populate_sal_dicts(saliencies_hidden, hidden_saliency, enc_lab, i_elem)
 
-                    #  get the grasp saliencies to see how they vary through the iterations
+                        # nested dict for the grasps within the objects
+                        if enc_lab[i_elem].item() in grasp_sal_frm_dd:
+                            if i in grasp_sal_frm_dd[enc_lab[i_elem].item()]:
+                                grasp_sal_frm_dd[enc_lab[i_elem].item()][i].append(frm_saliency[i_elem])
+                            else:
+                                grasp_sal_frm_dd[enc_lab[i_elem].item()][i] = [frm_saliency[i_elem]]
+                        else:
+                            grasp_sal_frm_dd[enc_lab[i_elem].item()] = {}
+                            grasp_sal_frm_dd[enc_lab[i_elem].item()][i] = [frm_saliency[i_elem]]
+                        if enc_lab[i_elem].item() in grasp_sal_hid_dd:
+                            if i in grasp_sal_hid_dd[enc_lab[i_elem].item()]:
+                                grasp_sal_hid_dd[enc_lab[i_elem].item()][i].append(hidden_saliency[i_elem])
+                            else:
+                                grasp_sal_hid_dd[enc_lab[i_elem].item()][i] = [hidden_saliency[i_elem]]
+                        else:
+                            grasp_sal_hid_dd[enc_lab[i_elem].item()] = {}
+                            grasp_sal_hid_dd[enc_lab[i_elem].item()][i] = [hidden_saliency[i_elem]]
+
+                    #  tod: get the grasp saliencies to see how they vary through the iterations
+
+                    for i_elem in range(len(output)):
+                        grasp_sal_hid[enc_lab[i_elem].item(), i] += hidden_saliency[i_elem]
+                        grasp_sal_frm[enc_lab[i_elem].item(), i] += frm_saliency[i_elem]
+                        grasp_sal_count[enc_lab[i_elem].item(), i] += 1
 
                     loss2 = criterion(hidden, enc_lab)
-
-
 
                     hidden = copy.copy(output)
                     output.detach()
@@ -551,14 +614,13 @@ def test_iter_model(model, test_loader, classes, criterion):
         # concatenate the mean salience for each variable
         # frame_salience = torch.cat((frame_salience, salience / len(inds)))
 
-
         # use indices of objects to form confusion matrix
         for n in range(len(enc_lab)):
             row = enc_lab[n]
             col = inds[n]
             confusion_ints[padded_rows_start - 1, row, col] += 1
             # add the prediction and true to the grasp_labels dict
-            grasp_num = get_nth_key(grasp_pred_labels, padded_rows_start-1)
+            grasp_num = get_nth_key(grasp_pred_labels, padded_rows_start - 1)
             grasp_true_labels[grasp_num].append(classes[row])
             grasp_pred_labels[grasp_num].append(classes[col])
 
@@ -577,6 +639,18 @@ def test_iter_model(model, test_loader, classes, criterion):
     for i in range(len(saliencies_frm)):
         print(
             f'{sum(saliencies_frm[i]) / len(saliencies_frm[i])} \t {sum(saliencies_hidden[i]) / len(saliencies_hidden[i])}')
+    # scale the grasp saliencies and print
+    grasp_sal_frm = grasp_sal_frm / grasp_sal_count
+    grasp_sal_hid = grasp_sal_hid / grasp_sal_count
+
+    # calculate variance of the grasp saliences
+    grasp_frm_std, grasp_frm_norm = salience_std(grasp_sal_frm_dd)
+    grasp_hid_std, grasp_hid_norm = salience_std(grasp_sal_hid_dd)
+    plot_saliencies(grasp_frm_norm, grasp_hid_norm, grasp_frm_std, grasp_hid_std, classes)
+
+    torch.set_printoptions(precision=2)
+    print('Frame Saliencies \t Hidden Saliencies')
+    print(f'\n Frame Input Grasp Saliencies \n {grasp_sal_frm} \n Hidden Layer Grasp Saliencies \n {grasp_sal_hid}')
     return true_labels, pred_labels, grasp_true_labels, grasp_pred_labels
 
 

@@ -1,7 +1,7 @@
 # import torch.nn as nn
 # import torch
 # import matplotlib.pyplot as plt
-# import os
+import os
 # from os.path import exists
 # import csv
 import pandas as pd
@@ -16,7 +16,7 @@ import numpy as np
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = './data/'
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/'
-n_grasps = [10, 7, 5, 3, 1]  # [10, 7, 5, 3, 1]
+n_grasps = [10]  # [10, 7, 5, 3, 1]
 models = [IterativeRNN2]  # TwoLayerConv, , TwoLayerWDropout
 loss_comparison_dict = {}
 sil_comparison_dict = {}

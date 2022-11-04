@@ -1,13 +1,14 @@
-import pickle
+# import pickle
 import csv
 import matplotlib.pyplot as plt
-import os
+# import os
 from os.path import exists
 import numpy as np
+import torch
 
 
 def plot_silhouette(file_path, model, n_grasps):
-    model_name = model.__class__.__name__
+    # model_name = model.__class__.__name__
     loss_dict = dict()
     f_size = 16
     fig, [ax1, ax2] = plt.subplots(1, 2)
@@ -107,3 +108,68 @@ def plot_losses(file, model):
     ax2.set_xlabel('epoch #')
     ax2.set_ylabel('Accuracy')
     ax2.legend()
+
+
+def plot_saliencies(frame_sal, hidden_sal, frame_std, hidden_std, classes):
+    colours = ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8']
+    f_size = 14
+
+    # normalise the salience
+    # frame_normed = frame_sal/torch.max(frame_sal)
+    # hidden_normed = hidden_sal/torch.max(hidden_sal)
+    # fig, [ax1, ax2, ax3] = plt.subplots(1, 3)
+    fig, axs = plt.subplot_mosaic([['1', '2a', '3'],
+                                   ['1', '2b', '3']])
+    axs['1'].set_title('Salience vs grasps', fontsize=f_size + 4)
+    axs['1'].set_ylabel('Salience', fontsize=f_size)
+    axs['1'].set_xlabel('Number of grasps', fontsize=f_size)
+    # ax2.set_title('Scaled Salience vs grasps', fontsize=f_size + 4)
+    axs['2a'].set_xlabel('Grasps', fontsize=f_size)
+    axs['2a'].set_ylabel('Frame Salience', fontsize=f_size)
+    axs['2b'].set_xlabel('Grasps', fontsize=f_size)
+    axs['2b'].set_ylabel('Hidden Salience', fontsize=f_size)
+    axs['3'].set_title('Salience trends', fontsize=f_size + 4)
+    axs['3'].set_ylabel('Salience', fontsize=f_size)
+    axs['3'].set_xlabel('Number of grasps', fontsize=f_size)
+    for row in range(len(frame_sal)):
+        axs['1'].plot(frame_sal[row], '-', label=f'{classes[row]} Frame Salience', color=colours[row])
+        axs['1'].plot(hidden_sal[row], '--', label=f'{classes[row]} Hidden Salience', color=colours[row])
+        axs['2a'].plot(frame_sal[row], '-', label=f'{classes[row]}', color=colours[row])
+        axs['2b'].plot(hidden_sal[row], '--', label=f'{classes[row]}', color=colours[row])
+    frm_arr = np.zeros((len(frame_sal), len(frame_sal[0])))
+    hid_arr = np.zeros((len(hidden_sal), len(hidden_sal[0])))
+    for labels, vals in frame_sal.items():
+        frm_arr[labels, :] = vals
+    for labels, vals in hidden_sal.items():
+        hid_arr[labels, :] = vals
+    hid_means = np.mean(hid_arr, axis=0)
+    frm_means = np.mean(frm_arr, axis=0)
+    # hidden_trend = torch.mean(hidden_normed, dim=0)
+    # frm_trend = torch.mean(frame_normed, dim=0)
+    # ax2.plot(torch.transpose(hidden_sal, 0, 1), torch.transpose(frame_sal, 0, 1), labels=classes)
+    axs['3'].plot(hid_means, '--', linewidth=3, label='Frame Trend')
+    axs['3'].plot(frm_means, linewidth=3, label='Hidden Trend')
+
+    axs['1'].legend(labels=['Frame Salience', 'Hidden Salience'])
+    axs['2a'].legend()
+    axs['3'].legend()
+
+    # normalise each row rather than whole matrix
+    '''frame_obj_norm = torch.empty((7, 10))
+    hidden_obj_norm = torch.empty((7, 10))
+    frame_std_norm = {}
+    hid_std_norm = {}
+    for row in range(frame_sal.size(0)):
+        frame_obj_norm[row, :] = frame_sal[row, :] / torch.max(frame_sal, dim=1).values[row]
+        frame_std_norm[row] = [x / torch.max(frame_sal, dim=1).values[row] for x in frame_std[row]]
+        hidden_obj_norm[row, :] = hidden_sal[row, :] / torch.max(hidden_sal, dim=1).values[row]
+        hid_std_norm[row] = [x / torch.max(hidden_sal, dim=1).values[row] for x in hidden_std[row]]'''
+    x = range(len(frame_sal[0]))
+    fig_objs, axs_objs = plt.subplot_mosaic([[1, 2, 3],
+                                             [4, 5, 6],
+                                             ['.', 7, '.']])
+    for labels, ax in axs_objs.items():
+        ax.errorbar(x, frame_sal[labels - 1], yerr=np.array(frame_std[labels - 1])/2, label='Frame')
+        ax.errorbar(x, hidden_sal[labels-1], yerr=np.array(hidden_std[labels - 1]) / 2, fmt='--', label='Hidden')
+        ax.set_title(classes[labels - 1])
+    axs_objs[1].legend()
