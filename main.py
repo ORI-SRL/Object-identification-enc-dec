@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from utils.networks import *
 from utils.ml_classifiers import *
 from utils.loss_plotting import *
+from utils.online_validation import *
 import numpy as np
 
 DATA_PATH = os.path.abspath(os.getcwd())
@@ -28,6 +29,9 @@ seed_experiment(123)
 classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
+
+while True:
+    write_read(1)
 
 TRAIN_MODEL = False
 TEST_MODEL = True
