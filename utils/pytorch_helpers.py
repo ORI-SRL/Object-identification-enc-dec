@@ -44,7 +44,7 @@ def encode_labels(labels, classes):
 def decode_labels(preds, classes):
     # encoded_label_frame = torch.zeros((len(labels), 1, 7), dtype=torch.float)  #
     decoded_label_frame = []  #
-    for i in range(len(preds)):
+    for i, _ in enumerate(preds):
         decoded_label_frame.append(classes[preds[i]])
     return decoded_label_frame
 
@@ -156,14 +156,14 @@ def salience_std(sal):
         for inners in sal[outers]:
             inner_max = max(sal[outers][inners][0:-1])
             if outers not in data_max:
-                data_max[outers] = 0.0
+                data_max[outers] = 1 # 0.0
             if inner_max > data_max[outers]:
-                data_max[outers] = inner_max
+                data_max[outers] = 1 # inner_max
     for val in sal:
         for val_inner in sal[val]:
             data = np.array(sal[val][val_inner])
             data = data / data_max[val]
-            data_std = np.std(data[0:-1])
+            data_std = np.var(data[0:-1])
             data_mean = np.mean(data[0:-1])
             if val in grasp_std:
                 grasp_std[val].append(data_std)
@@ -312,7 +312,7 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
             test_accuracy += frame_accuracy
             grasp_accuracy[padded_start - 1, 1] += 1
             grasp_accuracy[padded_start - 1, 0] += frame_accuracy
-            for n in range(len(enc_lab)):
+            for n, _ in enumerate(enc_lab):
                 row = enc_lab[n]
                 col = inds[n]
                 confusion_ints[row, col] += 1
@@ -416,7 +416,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, cla
                 frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
                 test_accuracy += frame_accuracy
 
-                for n in range(len(enc_lab)):
+                for n, _ in enumerate(enc_lab):
                     row = enc_lab[n]
                     col = inds[n]
                     confusion_ints[row, col] += 1
@@ -550,7 +550,7 @@ def test_iter_model(model, test_loader, classes, criterion):
                     # example on how to save stuff
                     # tod: sort this into a single dict populating function rather than called each time
                     # saliences_frm = populate_sal_dict(frm_saliency, enc_lab)
-                    for i_elem in range(len(frm_saliency)):
+                    for i_elem, _ in enumerate(frm_saliency):
                         # record general saliencies
                         # frame salience
                         saliencies_frm = populate_sal_dicts(saliencies_frm, frm_saliency, enc_lab, i_elem)
@@ -576,13 +576,14 @@ def test_iter_model(model, test_loader, classes, criterion):
 
                     #  tod: get the grasp saliencies to see how they vary through the iterations
 
-                    for i_elem in range(len(output)):
+                    for i_elem, _ in enumerate(output):
                         grasp_sal_hid[enc_lab[i_elem].item(), i] += hidden_saliency[i_elem]
                         grasp_sal_frm[enc_lab[i_elem].item(), i] += frm_saliency[i_elem]
                         grasp_sal_count[enc_lab[i_elem].item(), i] += 1
 
                     loss2 = criterion(hidden, enc_lab)
 
+                    # hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
                     hidden = copy.copy(output)
                     output.detach()
 
@@ -615,7 +616,7 @@ def test_iter_model(model, test_loader, classes, criterion):
         # frame_salience = torch.cat((frame_salience, salience / len(inds)))
 
         # use indices of objects to form confusion matrix
-        for n in range(len(enc_lab)):
+        for n, _ in enumerate(enc_lab):
             row = enc_lab[n]
             col = inds[n]
             confusion_ints[padded_rows_start - 1, row, col] += 1
@@ -636,7 +637,7 @@ def test_iter_model(model, test_loader, classes, criterion):
     print(f'Grasp accuracy: {grasp_accuracy}')
     confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=0)
     print('Frame Saliencies \t Hidden Saliencies')
-    for i in range(len(saliencies_frm)):
+    for i, _ in enumerate(saliencies_frm):
         print(
             f'{sum(saliencies_frm[i]) / len(saliencies_frm[i])} \t {sum(saliencies_hidden[i]) / len(saliencies_hidden[i])}')
     # scale the grasp saliencies and print
@@ -868,7 +869,7 @@ def test_model(model, train_loader, test_loader, classes, n_grasps, show=True, c
             ax = plt.axes(projection='3d')
         for label in classes:
             label_indices = []
-            for idx in range(len(test_labels_out)):
+            for idx, _ in enumerate(test_labels_out):
                 if test_labels_out[idx] == label:
                     label_indices.append(idx)
             if encoded_test_out.shape[1] == 2:
