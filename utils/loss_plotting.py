@@ -142,18 +142,20 @@ def plot_saliencies(frame_sal, hidden_sal, frame_std, hidden_std, classes):
         frm_arr[labels, :] = vals
     for labels, vals in hidden_sal.items():
         hid_arr[labels, :] = vals
-    hid_means = np.mean(hid_arr, axis=0)
-    frm_means = np.mean(frm_arr, axis=0)
-    # hidden_trend = torch.mean(hidden_normed, dim=0)
-    # frm_trend = torch.mean(frame_normed, dim=0)
-    # ax2.plot(torch.transpose(hidden_sal, 0, 1), torch.transpose(frame_sal, 0, 1), labels=classes)
-    axs['3'].plot(hid_means, '--', linewidth=3, label='Frame Trend')
-    axs['3'].plot(frm_means, linewidth=3, label='Hidden Trend')
+    hid_arr_norm = (hid_arr - np.mean(hid_arr)) / np.std(hid_arr)
+    frm_arr_norm = (frm_arr - np.mean(frm_arr)) / np.std(frm_arr)
+    hid_means = np.mean(hid_arr_norm, axis=0)
+    frm_means = np.mean(frm_arr_norm, axis=0)
+    hid_std = np.std(hid_arr_norm, axis=0)
+    frm_std = np.std(frm_arr_norm, axis=0)
+    axs['3'].plot(frm_means, 'tab:orange', linewidth=3, label='Hidden Trend')
+    axs['3'].plot(hid_means, 'b--', linewidth=3, label='Frame Trend')
+    # axs['3'].errorbar(range(10), frm_means, yerr=frm_std/2, fmt='m', linewidth=3, label='Hidden Trend')
+    # axs['3'].errorbar(range(10), hid_means, yerr=hid_std/2, fmt='b--', linewidth=3, label='Frame Trend')
 
-    axs['1'].legend(labels=['Frame Salience', 'Hidden Salience'])
-    axs['2a'].legend()
-    axs['3'].legend()
-
+    fig2, ax2 = plt.subplots()
+    ax2.plot(frm_means, 'tab:orange', linewidth=3, label='Hidden Trend')
+    ax2.plot(hid_means, 'b--', linewidth=3, label='Frame Trend')
     # normalise each row rather than whole matrix
     '''frame_obj_norm = torch.empty((7, 10))
     hidden_obj_norm = torch.empty((7, 10))
@@ -164,12 +166,20 @@ def plot_saliencies(frame_sal, hidden_sal, frame_std, hidden_std, classes):
         frame_std_norm[row] = [x / torch.max(frame_sal, dim=1).values[row] for x in frame_std[row]]
         hidden_obj_norm[row, :] = hidden_sal[row, :] / torch.max(hidden_sal, dim=1).values[row]
         hid_std_norm[row] = [x / torch.max(hidden_sal, dim=1).values[row] for x in hidden_std[row]]'''
+
     x = range(len(frame_sal[0]))
     fig_objs, axs_objs = plt.subplot_mosaic([[1, 2, 3],
                                              [4, 5, 6],
                                              ['.', 7, '.']])
     for labels, ax in axs_objs.items():
-        ax.errorbar(x, frame_sal[labels - 1], yerr=np.array(frame_std[labels - 1])/2, label='Frame')
-        ax.errorbar(x, hidden_sal[labels-1], yerr=np.array(hidden_std[labels - 1]) / 2, fmt='--', label='Hidden')
+        frame_sal[labels - 1] = (frame_sal[labels - 1] - np.mean(frm_arr)) / np.std(frm_arr)
+        hidden_sal[labels - 1] = (hidden_sal[labels - 1] - np.mean(hid_arr)) / np.std(hid_arr)
+        frame_std[labels - 1] = np.std(frame_sal[labels - 1])
+        hidden_std[labels - 1] = np.std(hidden_sal[labels - 1])
+        ax.errorbar(x, frame_sal[labels - 1], yerr=np.array(frame_std[labels - 1]) / 2, fmt='tab:orange', label='Frame')
+        ax.errorbar(x, hidden_sal[labels - 1], yerr=np.array(hidden_std[labels - 1]) / 2, fmt='b--', label='Hidden')
         ax.set_title(classes[labels - 1])
     axs_objs[1].legend()
+    axs['1'].legend(labels=['Frame Salience', 'Hidden Salience'])
+    axs['2a'].legend()
+    axs['3'].legend()
