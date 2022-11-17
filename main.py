@@ -1,10 +1,11 @@
 # import torch.nn as nn
-# import torch
 # import matplotlib.pyplot as plt
 import os
 # from os.path import exists
 # import csv
 import pandas as pd
+import torch
+
 from utils.pytorch_helpers import *
 from utils.data_handlers import ObjectGraspsDataset
 from torch.utils.data import DataLoader
@@ -30,8 +31,7 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-while True:
-    write_read(1)
+
 
 TRAIN_MODEL = False
 TEST_MODEL = True
@@ -39,6 +39,16 @@ USE_PREVIOUS = True
 COMPARE_LOSSES = True
 ITERATIVE = True
 RNN = True
+ONLINE_VALIDATION = True
+
+if ONLINE_VALIDATION:
+    train_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_train_data.npy',
+                                     f'{DATA_FOLDER}shuffled_train_labels.npy', 10, train=True,
+                                     pre_sort=True, random_pad=False)
+
+    norm_vals = torch.stack([train_data.max_vals, train_data.min_vals])
+    model = models[0]()
+    online_loop(model, MODEL_SAVE_FOLDER, norm_vals, classes)
 
 for ModelArchitecture in models:
     for num_grasps in n_grasps:
