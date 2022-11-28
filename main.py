@@ -34,21 +34,24 @@ batch_size = 32
 
 
 TRAIN_MODEL = False
-TEST_MODEL = True
+TEST_MODEL = False
 USE_PREVIOUS = True
-COMPARE_LOSSES = True
+COMPARE_LOSSES = False
 ITERATIVE = True
 RNN = True
 ONLINE_VALIDATION = True
 
 if ONLINE_VALIDATION:
+
     train_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_train_data.npy',
                                      f'{DATA_FOLDER}shuffled_train_labels.npy', 10, train=True,
                                      pre_sort=True, random_pad=False)
 
     norm_vals = torch.stack([train_data.max_vals, train_data.min_vals])
     model = models[0]()
-    online_loop(model, MODEL_SAVE_FOLDER, norm_vals, classes)
+    test_new_grasps(model, DATA_FOLDER, MODEL_SAVE_FOLDER, classes)
+    # gather_grasps(DATA_FOLDER, classes, norm_vals)
+    # online_loop(model, MODEL_SAVE_FOLDER, norm_vals, classes)
 
 for ModelArchitecture in models:
     for num_grasps in n_grasps:
