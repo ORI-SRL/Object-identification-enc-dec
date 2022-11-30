@@ -1,5 +1,7 @@
+import copy
+
 import numpy as np
-import os
+# import os
 from os.path import exists
 import torch
 import torch.nn as nn
@@ -12,6 +14,7 @@ import time
 from utils.pytorch_helpers import get_device
 from utils.ml_classifiers import *
 import pickle
+import math
 
 
 # from utils.networks import IterativeRNN2
@@ -27,19 +30,35 @@ def write_read(arduino, stack):
     return stack
 
 
-def format_rows(data, norm_vals):
+def format_rows(data, norm_vals, norm=True):
     """Take only the first and last rows to find the delta between them but check for a DC shift"""
+    all_data_list = []  # np.empty((0, 19))
+    for row in enumerate(data):
+        all_data_list.append(list(map(int, data[row[0]].split(";")[20:-1])))
+    all_data_arr = np.array(all_data_list)
+    plt.plot(all_data_arr)
+    plt.show()
     init_row_str = data[0].split(";")[20:-1]
     end_row_str = data[-1].split(";")[20:-1]
     init_row = torch.FloatTensor(np.double(init_row_str))
     end_row = torch.FloatTensor(np.double(end_row_str))
-    datarow = end_row - init_row
-    norm_row = (datarow - norm_vals[1, :]) / (norm_vals[0, :] - norm_vals[1, :])
-    norm_row[norm_row < 0] = 0
-    return norm_row
+    datarow = end_row - init_row - math.floor(sum(end_row - init_row) / len(end_row))
+    # rejig the order in case the mapping is wrong
+    # initial order -> 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 1, 0, 2, 3, 18
+    data_row_copy = copy.copy(datarow)
+    # datarow[14] = data_row_copy[16]
+    # datarow[15] = data_row_copy[17]
+    # datarow[16] = data_row_copy[14]
+    # datarow[17] = data_row_copy[15]
+    if norm:
+        out_row = (datarow - norm_vals[1, :]) / (norm_vals[0, :] - norm_vals[1, :])
+        out_row[out_row < 0] = 0
+    else:
+        out_row = datarow
+    return out_row, datarow
 
 
-def grasp_obj(self, arduino):
+def grasp_obj():
     print("pressed")
 
 
@@ -112,7 +131,7 @@ def online_loop(model, save_folder, norm_vals, classes):
     model.eval()
 
     # set up model initial conditions
-    device = get_device()
+    # device = get_device()
     hidden = torch.tensor([1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7])  # .to(device)
     sm = nn.Softmax(dim=0)
     # fig, ax = plt.subplots()
@@ -209,29 +228,47 @@ def gather_grasps(data_folder, classes, norm_vals):
                 pickle.dump(delta_values, fp)
 
 
-def test_new_grasps(model, data_folder, save_folder, classes):
+def test_new_grasps(model, data_folder, save_folder, classes, norm_vals):
+    # load model state
     model_state = f'{save_folder}{model.__class__.__name__}_dropout_model_state.pt'
     if exists(model_state):
         model.load_state_dict(torch.load(model_state))
     model.eval()
     model_name = model.__class__.__name__
-    # classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
+
+    # predicted and true labels are used for the confusion matrix
     pred_labels = []
     true_labels = []
-
+    new_norms = torch.tensor(
+        [[32, 10, 35, 48, 127, 52, 27, 18, 33, 16, 32, 30, 15, 64, 48, 69, 48, 69, 170],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])  # torch.zeros(19)
     # fig, left_text, right_text = setup_gui(classes)
-    device = get_device()
     sm = nn.Softmax(dim=1)
+
+    # loop over the objects, load the raw file to extract the delta between first and last row
     for object_name in classes:
-        # object_name = input("Object Name?")
+        obj_deltas = []
+        save_deltas = []
+        for f in range(20):
+            raw_file = f"{data_folder}val_test_grasps/{object_name}{f}"
+            with open(raw_file, "rb") as fp:  # Unpickling
+                raw_data = pickle.load(fp)
+            del_row, max_row = format_rows(raw_data, norm_vals)
+            obj_deltas.append(del_row)
+            save_deltas.append(max_row)
+            # new_norms = torch.max(torch.stack((new_norms, max_row)), dim=0).values
+
+        # set the initial hidden layer to be a vanilla uniform distribution
         hidden = torch.tensor([1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7])  # .to(device)
         hidden = torch.stack((hidden, hidden))
-        data_file = f"{data_folder}val_test_grasps/{object_name}_deltas"
+
+        # data_file = f"{data_folder}val_test_grasps/{object_name}_deltas"
         true_val = classes.index(object_name)
-        with open(data_file, "rb") as fp:  # Unpickling
-            input_data = pickle.load(fp)
-        if object_name == 'sponge':
-            input_data.extend(input_data)
+        with open(f"{data_folder}val_test_grasps/{object_name}_deltas", "wb") as fp:  # Pickling
+            pickle.dump(save_deltas, fp)
+        input_data = obj_deltas
+        # if object_name == 'sponge':
+        #     input_data.extend(input_data)
         if len(input_data) > 20:
             input_data = input_data[0:20]
         input_data = torch.stack(input_data)
@@ -241,7 +278,7 @@ def test_new_grasps(model, data_folder, save_folder, classes):
 
             hidden = model(input_data[:, idx, :], hidden)
             probs = sm(hidden)
-            if idx % 4 == 0 and idx != 0:
+            if idx % 9 == 0 and idx != 0:
                 # hidden = torch.tensor([1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7])
                 pred_labels.extend(list(np.argmax(probs.detach().numpy(), axis=1)))
                 true_labels.append(true_val)
@@ -249,4 +286,5 @@ def test_new_grasps(model, data_folder, save_folder, classes):
                 break
             # present_grasp_result(probs, classes, fig, left_text, right_text)
     plot_confusion(pred_labels, true_labels, model_name, 1, iter=True)
+    plt.show()
     print('done')
