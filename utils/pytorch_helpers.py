@@ -374,9 +374,9 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, cla
 
                 for r in range(padded_start):
                     optimizer.zero_grad()
-                    final_row, output = model(frame[:, r, :], pred_in)
+                    final_row = model(frame[:, r, :], pred_in)  # , output
                     pred_in = final_row.detach()
-                    grasp_loss = gamma_loss(criterion, output, enc_lab)
+                    grasp_loss = criterion(final_row, enc_lab)  # gamma_loss(criterion, final_row, enc_lab)
                     if r == 0:
                         loss = grasp_loss
                     else:
@@ -407,9 +407,9 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, cla
                 pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
 
                 for r in range(padded_start):
-                    final_row, output = model(frame[:, r, :], pred_in)
+                    final_row = model(frame[:, r, :], pred_in)
                     pred_in = final_row.detach()
-                    loss2 = gamma_loss(criterion, output, enc_lab)
+                    loss2 = criterion(final_row, enc_lab)  # gamma_loss(criterion, output, enc_lab)
                     test_loss += loss2.item()
 
                 _, inds = final_row.max(dim=1)
