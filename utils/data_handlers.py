@@ -2,6 +2,33 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 import numpy as np
 import torch
+import pickle
+
+
+def shuffle_online_data(data_folder, n_shuffles, classes):
+    obj_labels = []
+    online_arr = np.empty((0, 190))
+    object_array = np.empty((0, 190))
+    for obj_name in classes:
+        object_array = np.empty((0, 190))
+        # load the deltas file of the object required
+        data_file = f"{data_folder}val_test_grasps/{obj_name}_deltas"
+        with open(data_file, "rb") as fp:
+            input_data = pickle.load(fp)
+        # online_arr = input_data
+        obj_labels += [obj_name] * n_shuffles * 2
+
+        input_arr = np.reshape(np.concatenate(input_data), (-1, 190))
+        for shuffle in range(n_shuffles):
+            a = input_arr
+            noise = np.random.normal(-0.5, 0.5, a.shape)
+            a = a + noise * a / 5
+            a[a < 1] = 0
+            np.random.shuffle(a.reshape([-1, 19]))  # 'this is looking to randomise the order of the grasps'
+            online_arr = np.concatenate((online_arr, a), axis=0)
+        object_array = np.concatenate((object_array, online_arr), axis=0)
+    np.save(f'{data_folder}shuffled_online_data.npy', object_array)
+    np.save(f'{data_folder}shuffled_online_labels.npy', obj_labels)
 
 
 class ObjectGraspsDataset(Dataset):
