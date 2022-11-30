@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 
 from utils.pytorch_helpers import *
-from utils.data_handlers import ObjectGraspsDataset
+from utils.data_handlers import *
 from torch.utils.data import DataLoader
 from utils.networks import *
 from utils.ml_classifiers import *
@@ -31,8 +31,6 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-
-
 TRAIN_MODEL = False
 TEST_MODEL = False
 USE_PREVIOUS = True
@@ -46,10 +44,41 @@ if ONLINE_VALIDATION:
     train_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_train_data.npy',
                                      f'{DATA_FOLDER}shuffled_train_labels.npy', 10, train=True,
                                      pre_sort=True, random_pad=False)
-
+    test_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_test_data.npy',
+                                    f'{DATA_FOLDER}shuffled_test_labels.npy', 10, train_data.max_vals,
+                                    train_data.min_vals, train=False, pre_sort=True, random_pad=False)
+    test_data.data = test_data.data.reshape(test_data.data.size(0), test_data.data.size(2),
+                                            test_data.data.size(3))
+    test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0,
+                             shuffle=True)
     norm_vals = torch.stack([train_data.max_vals, train_data.min_vals])
     model = models[0]()
-    test_new_grasps(model, DATA_FOLDER, MODEL_SAVE_FOLDER, classes)
+    test_new_grasps(model, DATA_FOLDER, MODEL_SAVE_FOLDER, classes, norm_vals)
+
+    shuffle_online_data(DATA_FOLDER, 50, classes)
+    online_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_online_data.npy',
+                                      f'{DATA_FOLDER}shuffled_online_labels.npy', 10, train_data.max_vals,
+                                      train_data.min_vals, train=False,
+                                      pre_sort=True, random_pad=False)
+    online_data.data = online_data.data.reshape(online_data.data.size(0), online_data.data.size(2),
+                                                online_data.data.size(3))
+    online_loader = DataLoader(online_data, batch_size=batch_size, num_workers=0,
+                               shuffle=True)
+    model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_dropout_model_state.pt'
+    if exists(model_state):
+        model.load_state_dict(torch.load(model_state))
+    # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
+    criterion = nn.CrossEntropyLoss()
+    # Optimizer
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-6)
+    batch_params, batch_losses = learn_iter_model(model, online_loader, test_loader, optimizer, criterion,
+                                                  classes,
+                                                  n_epochs=1500,
+                                                  max_patience=75,
+                                                  save_folder=MODEL_SAVE_FOLDER,
+                                                  save=False,
+                                                  show=True)
+
     # gather_grasps(DATA_FOLDER, classes, norm_vals)
     # online_loop(model, MODEL_SAVE_FOLDER, norm_vals, classes)
 
@@ -135,7 +164,8 @@ for ModelArchitecture in models:
             model.eval()
             criterion = nn.CrossEntropyLoss()
             if ITERATIVE:
-                true_labels, pred_labels, grasp_true, grasp_pred = test_iter_model(model, val_loader, classes, criterion)
+                true_labels, pred_labels, grasp_true, grasp_pred = test_iter_model(model, val_loader, classes,
+                                                                                   criterion)
                 model_file = f'{MODEL_SAVE_FOLDER}{model_name}_labels'
                 # save_params(model_file, true_labels, pred_labels)
 
