@@ -62,17 +62,23 @@ if ITERATIVE or RNN:
                                               train_data.data.size(3))
     test_data.data = test_data.data.reshape(test_data.data.size(0), test_data.data.size(2),
                                             test_data.data.size(3))
+    validation_data.data = validation_data.data.reshape(validation_data.data.size(0),
+                                                        validation_data.data.size(2),
+                                                        validation_data.data.size(3))
+
+if ONLINE_VALIDATION:
+
     test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0,
                              shuffle=True)
     norm_vals = torch.stack([train_data.max_vals, train_data.min_vals])
     model = models[0]()
-    test_new_grasps(model, DATA_FOLDER, MODEL_SAVE_FOLDER, classes, norm_vals)
 
-    shuffle_online_data(DATA_FOLDER, 50, classes)
-    online_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_online_data.npy',
-                                      f'{DATA_FOLDER}shuffled_online_labels.npy', 10, train_data.max_vals,
-                                      train_data.min_vals, train=False,
-                                      pre_sort=True, random_pad=False)
+    # gather_grasps(DATA_FOLDER, classes, norm_vals)
+
+    # test_new_grasps(model, DATA_FOLDER, MODEL_SAVE_FOLDER, classes, norm_vals)
+
+    # shuffle_online_data(DATA_FOLDER, 50, classes)
+
     online_data.data = online_data.data.reshape(online_data.data.size(0), online_data.data.size(2),
                                                 online_data.data.size(3))
     online_loader = DataLoader(online_data, batch_size=batch_size, num_workers=0,
@@ -82,8 +88,12 @@ if ITERATIVE or RNN:
         model.load_state_dict(torch.load(model_state))
     # Loss function - for multiclass classification this should be Cross Entropy after a softmax activation
     criterion = nn.CrossEntropyLoss()
+
     # Optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=5e-6)
+    if TUNING:
+        optimizer = torch.optim.SGD(model.parameters(), lr=5e-6)
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     batch_params, batch_losses = learn_iter_model(model, online_loader, test_loader, optimizer, criterion,
                                                   classes,
                                                   n_epochs=1500,
@@ -99,26 +109,6 @@ for ModelArchitecture in models:
     for num_grasps in n_grasps:
 
         model = ModelArchitecture()
-
-        # load grasp dataset into train and test
-        train_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_train_data.npy',
-                                         f'{DATA_FOLDER}shuffled_train_labels.npy', num_grasps, train=True,
-                                         pre_sort=True, random_pad=False)
-        test_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_test_data.npy',
-                                        f'{DATA_FOLDER}shuffled_test_labels.npy', num_grasps, train_data.max_vals,
-                                        train_data.min_vals, train=False, pre_sort=True, random_pad=False)
-        validation_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_val_data.npy',
-                                              f'{DATA_FOLDER}shuffled_val_labels.npy', num_grasps, train_data.max_vals,
-                                              train_data.min_vals, train=False, pre_sort=True, random_pad=False)
-
-        if ITERATIVE or RNN:
-            train_data.data = train_data.data.reshape(train_data.data.size(0), train_data.data.size(2),
-                                                      train_data.data.size(3))
-            test_data.data = test_data.data.reshape(test_data.data.size(0), test_data.data.size(2),
-                                                    test_data.data.size(3))
-            validation_data.data = validation_data.data.reshape(validation_data.data.size(0),
-                                                                validation_data.data.size(2),
-                                                                validation_data.data.size(3))
 
         train_loader = DataLoader(train_data, batch_size=batch_size, num_workers=0,
                                   shuffle=True)  # torch.from_numpy(train_data)
@@ -153,9 +143,9 @@ for ModelArchitecture in models:
                 batch_params, batch_losses = train_RNN(model, train_loader, test_loader, optimizer, criterion,
                                                        classes, batch_size,
                                                        n_epochs=1000,
-                                                       max_patience=75,
+                                                       max_patience=50,
                                                        save_folder=MODEL_SAVE_FOLDER,
-                                                       save=True,
+                                                       save=False,
                                                        show=True)
             else:
                 batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
