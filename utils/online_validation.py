@@ -21,28 +21,35 @@ import math
 
 
 def write_read(arduino, stack):
-    arduino.readline()
-    arduino.readline()
-    arduino.readline()
     data = arduino.readline()
-    data = data.decode()
+    # data = data.decode()
     stack.append(data)
     return stack
 
 
-def format_rows(data, norm_vals, norm=True):
+def format_rows(data, norm_vals, start_idx, norm=True):
     """Take only the first and last rows to find the delta between them but check for a DC shift"""
     all_data_list = []  # np.empty((0, 19))
+    final_idx = len(data)
+    if len(data[start_idx+1:]) != 0:
+        data = data[start_idx+1:]
+    else:
+        start_idx = 0
+        data = data[start_idx + 1:]
     for row in enumerate(data):
-        all_data_list.append(list(map(int, data[row[0]].split(";")[20:-1])))
+        if len(data[row[0]]) > 100:
+            all_data_list.append(list(map(int, data[row[0]].split(";")[-20:-1])))
+        # else:
+            # final_idx -= 1
     all_data_arr = np.array(all_data_list)
     plt.plot(all_data_arr)
     plt.show()
-    init_row_str = data[0].split(";")[20:-1]
-    end_row_str = data[-1].split(";")[20:-1]
+    plt.cla()
+    init_row_str = data[1].split(";")[-20:-1]
+    end_row_str = data[-1].split(";")[-20:-1]
     init_row = torch.FloatTensor(np.double(init_row_str))
     end_row = torch.FloatTensor(np.double(end_row_str))
-    datarow = end_row - init_row - math.floor(sum(end_row - init_row) / len(end_row))
+    datarow = end_row - init_row  # - math.floor(sum(end_row - init_row) / len(end_row))
     # rejig the order in case the mapping is wrong
     # initial order -> 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 1, 0, 2, 3, 18
     data_row_copy = copy.copy(datarow)
@@ -55,7 +62,7 @@ def format_rows(data, norm_vals, norm=True):
         out_row[out_row < 0] = 0
     else:
         out_row = datarow
-    return out_row, datarow
+    return out_row, datarow, final_idx
 
 
 def grasp_obj():
@@ -162,7 +169,7 @@ def online_loop(model, save_folder, norm_vals, classes):
                 grasp_time = time.time()
             # valve_arduino.write(bytes("0", 'utf-8'))
             print("Release object")
-            input_data = format_rows(data_stack, norm_vals)  # .to(device)
+            input_data = format_rows(data_stack, norm_vals, norm=True)  # .to(device)
             hidden = model(input_data, hidden)
             probs = sm(hidden)
             present_grasp_result(probs, classes, fig, left_text, right_text)
@@ -180,17 +187,19 @@ def gather_grasps(data_folder, classes, norm_vals):
     # valve_arduino = serial.Serial(port='COM4', baudrate=9600, timeout=.1)
     save_folder = f"{data_folder}val_test_grasps"
     data_stack = []
+    data_stack_dec = []
     grasping = True
     grasp_num = 6
     new_gather = {}
     delta_values = []
-    object_name = input("Which object is being grasped?")
+    object_name = "weights"  # input("Which object is being grasped?")
     while grasping:
-        grasp_init = input("Take grasp? Y or N")  # "y"
+        grasp_init = "Y"  # input("Take grasp? Y or N")  # "y"
         data_arduino.flush()
         data_arduino.readline()
         if grasp_init == "Y" or grasp_init == "y":
             data_arduino.flush()
+            data_arduino.readline()
             data_arduino.readline()
             start_time = time.time()
             grasp_time = time.time()
@@ -216,7 +225,11 @@ def gather_grasps(data_folder, classes, norm_vals):
                 new_gather[object_name].append(data_stack)
             else:
                 new_gather[object_name] = [data_stack]'''
-            data_delta = format_rows(data_stack, norm_vals)
+            for row in enumerate(data_stack):
+                r_temp = data_stack[row[0]].decode()
+                if r_temp != "":
+                    data_stack_dec.append(data_stack[row[0]].decode())
+            data_delta = format_rows(data_stack_dec, norm_vals, start_idx=0)
             delta_values.append(data_delta)
             grasp_num += 1
             print(grasp_num, " grasps have been taken.")
@@ -249,11 +262,12 @@ def test_new_grasps(model, data_folder, save_folder, classes, norm_vals):
     for object_name in classes:
         obj_deltas = []
         save_deltas = []
+        start_idx = 0
         for f in range(20):
             raw_file = f"{data_folder}val_test_grasps/{object_name}{f}"
             with open(raw_file, "rb") as fp:  # Unpickling
                 raw_data = pickle.load(fp)
-            del_row, max_row = format_rows(raw_data, norm_vals)
+            del_row, max_row, start_idx = format_rows(raw_data, norm_vals, start_idx, norm=True)
             obj_deltas.append(del_row)
             save_deltas.append(max_row)
             # new_norms = torch.max(torch.stack((new_norms, max_row)), dim=0).values
