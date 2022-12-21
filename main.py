@@ -41,14 +41,25 @@ RNN = True
 ONLINE_VALIDATION = False
 TUNING = True
 
-if ONLINE_VALIDATION:
+# load grasp datasets
+train_data = ObjectGraspsDataset(f'{DATA_FOLDER}{FILE_PREFIX}shuffled_train_data.npy',
+                                 f'{DATA_FOLDER}{FILE_PREFIX}shuffled_train_labels.npy', 10, train=True,
+                                 pre_sort=True, random_pad=False)
+test_data = ObjectGraspsDataset(f'{DATA_FOLDER}{FILE_PREFIX}shuffled_test_data.npy',
+                                f'{DATA_FOLDER}{FILE_PREFIX}shuffled_test_labels.npy', 10, train_data.max_vals,
+                                train_data.min_vals, train=False, pre_sort=True, random_pad=False)
+validation_data = ObjectGraspsDataset(f'{DATA_FOLDER}{FILE_PREFIX}shuffled_val_data.npy',
+                                      f'{DATA_FOLDER}{FILE_PREFIX}shuffled_val_labels.npy', 10,
+                                      train_data.max_vals,
+                                      train_data.min_vals, train=False, pre_sort=True, random_pad=False)
+online_data = ObjectGraspsDataset(f'{DATA_FOLDER}../shifted_data/shuffled_online_data.npy',
+                                  f'{DATA_FOLDER}../shifted_data/shuffled_online_labels.npy', 10, train_data.max_vals,
+                                  train_data.min_vals, train=False,
+                                  pre_sort=True, random_pad=False)
 
-    train_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_train_data.npy',
-                                     f'{DATA_FOLDER}shuffled_train_labels.npy', 10, train=True,
-                                     pre_sort=True, random_pad=False)
-    test_data = ObjectGraspsDataset(f'{DATA_FOLDER}shuffled_test_data.npy',
-                                    f'{DATA_FOLDER}shuffled_test_labels.npy', 10, train_data.max_vals,
-                                    train_data.min_vals, train=False, pre_sort=True, random_pad=False)
+if ITERATIVE or RNN:
+    train_data.data = train_data.data.reshape(train_data.data.size(0), train_data.data.size(2),
+                                              train_data.data.size(3))
     test_data.data = test_data.data.reshape(test_data.data.size(0), test_data.data.size(2),
                                             test_data.data.size(3))
     test_loader = DataLoader(test_data, batch_size=batch_size, num_workers=0,
