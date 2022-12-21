@@ -10,16 +10,17 @@ from utils.pytorch_helpers import *
 from utils.data_handlers import *
 from torch.utils.data import DataLoader
 from utils.networks import *
-from utils.ml_classifiers import *
+# from utils.ml_classifiers import *
 from utils.loss_plotting import *
 from utils.online_validation import *
 import numpy as np
 
 DATA_PATH = os.path.abspath(os.getcwd())
-DATA_FOLDER = './data/'
-MODEL_SAVE_FOLDER = './saved_model_states/iterative/'
-n_grasps = [10]  # [10, 7, 5, 3, 1]
-models = [IterativeRNN2]  # TwoLayerConv, , TwoLayerWDropout
+DATA_FOLDER = "./data/combined_tune_data/"
+MODEL_SAVE_FOLDER = './saved_model_states/iterative/shifted/'
+FILE_PREFIX = "combined_"
+n_grasps = [10]  # , 7, 5, 3, 1]
+models = [IterativeRNN2]  # TwoLayerConv, , TwoLayerWDropout IterativeRNN2
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
@@ -31,13 +32,14 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-TRAIN_MODEL = False
-TEST_MODEL = False
-USE_PREVIOUS = True
+TRAIN_MODEL = True
+TEST_MODEL = True
+USE_PREVIOUS = False
 COMPARE_LOSSES = False
 ITERATIVE = True
 RNN = True
-ONLINE_VALIDATION = True
+ONLINE_VALIDATION = False
+TUNING = True
 
 if ONLINE_VALIDATION:
 
