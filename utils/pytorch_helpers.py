@@ -156,9 +156,9 @@ def salience_std(sal):
         for inners in sal[outers]:
             inner_max = max(sal[outers][inners][0:-1])
             if outers not in data_max:
-                data_max[outers] = 1 # 0.0
+                data_max[outers] = 1  # 0.0
             if inner_max > data_max[outers]:
-                data_max[outers] = 1 # inner_max
+                data_max[outers] = 1  # inner_max
     for val in sal:
         for val_inner in sal[val]:
             data = np.array(sal[val][val_inner])
@@ -237,9 +237,9 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
                     loss2 = silhouette.silhouette.score(embeddings, enc_lab, loss=True)
                     loss = loss1 + 2 * loss2
                 else:
-                    output, hidden = model(frame[:, i, :], hidden)
+                    output = model(frame[:, i, :], hidden)
                     loss = criterion(output, enc_lab)
-
+                    hidden = copy.copy(output)
                 # if model_name == 'IterativeRCNN':
                 #     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
 
@@ -299,9 +299,9 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
                                                         loss=True)  # torch.as_tensor(frame_labels_num)
                     loss3 = loss1 + 2 * loss2
                 else:
-                    output, hidden = model(frame[:, i, :], hidden)
+                    output = model(frame[:, i, :], hidden)
                     loss3 = criterion(output, enc_lab)
-
+                    hidden = copy.copy(output)
                 if model_name == 'IterativeRCNN':
                     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
 
@@ -339,7 +339,7 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
         loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_accuracy': train_acc_out,
                      'testing_accuracy': test_acc_out}
     if save and best_params is not None:
-        model_file = f'{save_folder}{model_name}_weighted_loss'
+        model_file = f'{save_folder}{model_name}_dropout2'
         save_params(model_file, loss_dict, best_params)
 
     if show:
@@ -537,7 +537,7 @@ def test_iter_model(model, test_loader, classes, criterion):
                     # sm_out = sm(output)
                     score_max_index = output.argmax(1)  # class output across batches (dim=batch size)
                     score_max = output[range(output.shape[0]),
-                                score_max_index.data].mean()  # make sure this vector is dim=batch size, AND NOT A MATRIX
+                                       score_max_index.data].mean()  # make sure this vector is dim=batch size, AND NOT A MATRIX
                     score_max.backward()
 
                     # frm_saliency = torch.mean(frm.grad.data.abs(), dim=1).detach().cpu().numpy()  # dim=batch size vectors
@@ -781,7 +781,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
     print('Best parameters at:'
           'Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tTraining silhouette score: {:.4f} '
           '\tTesting silhouette score {:.4f}'
-          .format(epoch, best_loss_dict['train_loss'] * 1e3, best_loss_dict['test_loss'] * 1e3,
+          .format(epoch-max_patience, best_loss_dict['train_loss'] * 1e3, best_loss_dict['test_loss'] * 1e3,
                   -best_loss_dict['train_sil'], -best_loss_dict['test_sil']))
 
     if save and best_params is not None:
