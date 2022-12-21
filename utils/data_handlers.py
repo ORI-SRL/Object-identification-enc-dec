@@ -23,7 +23,7 @@ def shuffle_online_data(data_folder, n_shuffles, classes):
             a = input_arr
             noise = np.random.normal(-0.5, 0.5, a.shape)
             a = a + noise * a / 5
-            a[a < 1] = 0
+            a[a < 2] = 0
             np.random.shuffle(a.reshape([-1, 19]))  # 'this is looking to randomise the order of the grasps'
             online_arr = np.concatenate((online_arr, a), axis=0)
         object_array = np.concatenate((object_array, online_arr), axis=0)
