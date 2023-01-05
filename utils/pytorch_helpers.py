@@ -31,11 +31,14 @@ def get_device():
 
 
 def encode_labels(labels, classes):
+    """ convert labels in the batch to one-hot encoding"""
     # encoded_label_frame = torch.zeros((len(labels), 1, 7), dtype=torch.float)  #
     encoded_label_frame = torch.zeros((len(labels)), dtype=torch.long)  #
     i = 0
     for label in labels:
         # encoded_label_frame[i, 0, classes.index(label)] = 1  # = 1
+        if label[0:2] == 'SH':
+            label = label[2:]
         encoded_label_frame[i] = classes.index(label)
         i += 1
     return encoded_label_frame
@@ -464,7 +467,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, cla
         # plot model losses
         plot_model(best_loss_dict, train_loss_out, test_loss_out, train_acc_out, test_acc_out, type="accuracy")
 
-    return best_params, best_loss_dict
+    return model, best_params, best_loss_dict
 
 
 def test_iter_model(model, test_loader, classes, criterion):
@@ -781,7 +784,7 @@ def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps
     print('Best parameters at:'
           'Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tTraining silhouette score: {:.4f} '
           '\tTesting silhouette score {:.4f}'
-          .format(epoch-max_patience, best_loss_dict['train_loss'] * 1e3, best_loss_dict['test_loss'] * 1e3,
+          .format(epoch - max_patience, best_loss_dict['train_loss'] * 1e3, best_loss_dict['test_loss'] * 1e3,
                   -best_loss_dict['train_sil'], -best_loss_dict['test_sil']))
 
     if save and best_params is not None:
