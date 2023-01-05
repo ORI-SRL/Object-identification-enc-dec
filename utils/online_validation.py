@@ -305,19 +305,24 @@ def test_new_grasps(model, data_folder, save_folder, classes, norm_vals):
 
 def organise_tuning_data(old_data_file, old_labels_file, new_data_file, new_labels_file, num_epochs, batch_size,
                          sensor_maxima=None):
-    # load datasets
+    """ load datasets - old is the original data and new is the tuning set"""
     old_data = np.load(old_data_file)
     old_labels = np.load(old_labels_file)
     new_data = np.load(new_data_file)
     new_labels = np.load(new_labels_file)
     num_batches = int(np.floor(len(new_data) / batch_size))
+    """ In the training set, concat the data and find the maxima of each sensor value"""
     data_cat = np.concatenate((np.reshape(new_data, (-1, 19)), np.reshape(old_data, (-1, 19))), axis=0)
     if sensor_maxima is None:
         sensor_maxima = data_cat.max(axis=0)
 
+    data_out = None
+    labels_out = None
+
+    """ Predetermine the data in each epoch to be processed by the model"""
     for epoch in range(num_epochs):
         if epoch % 10 == 0:
-            print(f'Epoch number: {epoch}')
+            print(f'Epochs completed: {epoch}')
         epoch_data_out = np.empty((1, 0, 10, 19))
         epoch_labels_out = np.empty((1, 0))
 
@@ -333,20 +338,23 @@ def organise_tuning_data(old_data_file, old_labels_file, new_data_file, new_labe
             data2_batch = new_data[indices_data_2[i * batch_size:i * batch_size + batch_size], :]
             data2_labels = new_labels[indices_data_2[i * batch_size:i * batch_size + batch_size]]
 
+            # normalise by the training maxima and reshape the data
             data1_batch = np.reshape(data1_batch, (1, -1, 10, 19)) / sensor_maxima
             data2_batch = np.reshape(data2_batch, (1, -1, 10, 19)) / sensor_maxima
             data1_labels = np.reshape(data1_labels, (1, -1))
             data2_labels = np.reshape(data2_labels, (1, -1))
+
+            # stack the data into batches
             epoch_data_out = np.append(epoch_data_out, data1_batch, axis=1)
             epoch_data_out = np.append(epoch_data_out, data2_batch, axis=1)
             epoch_labels_out = np.append(epoch_labels_out, data1_labels, axis=1)
             epoch_labels_out = np.append(epoch_labels_out, data2_labels, axis=1)
-        if 'data_out' in locals():
-            data_out = np.append(data_out, epoch_data_out, axis=0)
-            labels_out = np.append(labels_out, epoch_labels_out, axis=0)
-        else:
+        if 'data_out' is None:
             data_out = epoch_data_out
             labels_out = epoch_labels_out
+        else:
+            data_out = np.append(data_out, epoch_data_out, axis=0)
+            labels_out = np.append(labels_out, epoch_labels_out, axis=0)
 
     return sensor_maxima, data_out, labels_out
 
@@ -356,8 +364,11 @@ def tune_RNN_network(model, train_loader, train_labels, test_loader, test_labels
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
     hidden_size = 7
+
+    """Convert data into tensors"""
     train_loader = torch.tensor(train_loader)
     test_loader = torch.tensor(test_loader)
+    """Calculate how many batches there are"""
     n_train_batches = int(train_loader.size(1) / batch_size)
     n_test_batches = int(test_loader.size(1) / batch_size)
     for epoch in range(n_epochs):
@@ -377,19 +388,20 @@ def tune_RNN_network(model, train_loader, train_labels, test_loader, test_labels
             frame[:, padded_start:, :] = 0
             nul_rows = frame.sum(dim=2) != 0
             frame = frame[:, :padded_start, :]
+
+            # convert frame_labels to numeric and allocate to tensor
             enc_lab = encode_labels(frame_labels, classes).to(device)
-            # convert frame_labels to numeric and allocate to tensor to silhouette score
 
             # set hidden layer
             hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
 
             optimizer.zero_grad()
-            # iterate through each grasp and run the model
+            """ iterate through each grasp and run the model """
             for j in range(padded_start):
                 output = model(frame[:, j, :].float(), hidden)
                 loss = criterion(output, enc_lab)
                 hidden = copy.copy(output)
-                frame_loss += loss  # * np.exp(- i/11)  #loss_weights[i]  #
+                frame_loss += loss  # sum loss at every loop
             frame_loss.backward()
             optimizer.step()
             # output = nn.functional.softmax(output, dim=-1)
@@ -420,12 +432,19 @@ def tune_RNN_network(model, train_loader, train_labels, test_loader, test_labels
             padded_start = np.random.randint(1, 11)
             frame_in[:, padded_start:, :] = 0
             nul_rows = frame_in.sum(dim=2) != 0
+
+            # take only the rows that are non-zero
             frame = frame_in[:, :padded_start, :]
+            # convert frame_labels to numeric and allocate to tensor
             enc_lab = encode_labels(frame_labels, classes).to(device)
+
+            # set hidden layer
+            hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
 
             # set the first hidden layer as a vanilla prediction or zeros
             hidden = torch.zeros(frame.size(0), hidden_size).to(device)
-            # Run the model through each grasp
+
+            """ Run the model through each grasp """
             for j in range(padded_start):
                 output = model(frame[:, j, :].float(), hidden)
                 loss3 = criterion(output, enc_lab)
@@ -441,6 +460,8 @@ def tune_RNN_network(model, train_loader, train_labels, test_loader, test_labels
                 row = enc_lab[n]
                 col = inds[n]
                 confusion_ints[row, col] += 1
+
+        # calculate the testing accuracy and losses and divide by the number of batches
         test_accuracy = test_accuracy / n_test_batches
         test_loss = test_loss.detach().cpu() / n_test_batches
         test_loss_out.append(test_loss)
@@ -479,9 +500,8 @@ def test_tuned_model(model, val_data, val_labels, n_epochs, batch_size, classes,
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
 
-    # Epochs
-    test_loss = 0.0
-    test_accuracy = 0.0
+    # set zero values for all initial parameters
+    test_loss, test_accuracy = 0.0, 0.0
     grasp_accuracy = torch.zeros((10, 2)).to(device)
     confusion_ints = torch.zeros((10, 7, 7)).to(device)
     grasp_true_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
@@ -490,10 +510,11 @@ def test_tuned_model(model, val_data, val_labels, n_epochs, batch_size, classes,
     pred_labels = []
     hidden_size = 7
     sm = nn.Softmax(dim=1)
-    val_loader = torch.tensor(val_data)
+
+    val_loader = torch.tensor(val_data) # convert data to tensors
     n_val_batches = int(val_loader.size(1) / batch_size)
     model.eval()
-    for epoch in range(10):
+    for epoch in range(10): # just use 10 epochs to save time
         for i in range(n_val_batches):
             # take the next frame from the data_loader and process it through the model
             frame = val_loader[epoch, i * batch_size:i * batch_size + batch_size, :, :].reshape(-1, 10, 19).to(device)
@@ -561,6 +582,7 @@ def test_tuned_model(model, val_data, val_labels, n_epochs, batch_size, classes,
 
 
 def online_grasp_w_early_stop(model, val_data, val_labels, n_epochs, batch_size, classes, criterion):
+    """unfinished but nearly ready for plot adding"""
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
     grasp_true_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
