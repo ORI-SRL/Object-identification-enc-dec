@@ -16,9 +16,9 @@ from utils.online_validation import *
 import numpy as np
 
 DATA_PATH = os.path.abspath(os.getcwd())
-DATA_FOLDER = "./data/combined_tune_data/"
+DATA_FOLDER = "./data/validation_data_523/"
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/shifted/'
-FILE_PREFIX = "combined_"
+FILE_PREFIX = "shifted_"
 n_grasps = [10]  # , 7, 5, 3, 1]
 models = [IterativeRNN2]  # TwoLayerConv, , TwoLayerWDropout IterativeRNN2
 loss_comparison_dict = {}
@@ -116,10 +116,10 @@ validation_data = ObjectGraspsDataset(f'{DATA_FOLDER}{FILE_PREFIX}shuffled_val_d
                                       f'{DATA_FOLDER}{FILE_PREFIX}shuffled_val_labels.npy', 10,
                                       train_data.max_vals,
                                       train_data.min_vals, train=False, pre_sort=True, random_pad=False)
-# online_data = ObjectGraspsDataset(f'{DATA_FOLDER}../shifted_data/shuffled_online_data.npy',
-#                                   f'{DATA_FOLDER}../shifted_data/shuffled_online_labels.npy', 10, train_data.max_vals,
-#                                   train_data.min_vals, train=False,
-#                                   pre_sort=True, random_pad=False)
+online_data = ObjectGraspsDataset(f'{DATA_FOLDER}../shifted_data/shuffled_online_data.npy',
+                                  f'{DATA_FOLDER}../shifted_data/shuffled_online_labels.npy', 10, train_data.max_vals,
+                                  train_data.min_vals, train=False,
+                                  pre_sort=True, random_pad=False)
 
 if ITERATIVE or RNN:
     train_data.data = train_data.data.reshape(train_data.data.size(0), train_data.data.size(2),
