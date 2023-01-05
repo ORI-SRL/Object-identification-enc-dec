@@ -1,5 +1,4 @@
 import copy
-
 import numpy as np
 # import os
 from os.path import exists
@@ -11,8 +10,8 @@ import matplotlib.patches as mpatch
 from matplotlib.patches import FancyBboxPatch
 import serial
 import time
-from utils.pytorch_helpers import get_device
 from utils.ml_classifiers import *
+from utils.pytorch_helpers import *
 import pickle
 import math
 
