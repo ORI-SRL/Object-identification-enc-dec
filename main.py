@@ -212,7 +212,7 @@ for ModelArchitecture in models:
                                                        n_epochs=1000,
                                                        max_patience=50,
                                                        save_folder=MODEL_SAVE_FOLDER,
-                                                       save=False,
+                                                       save=True,
                                                        show=True)
             else:
                 batch_params, batch_losses = learn_model(model, train_loader, test_loader, optimizer, criterion,
@@ -275,7 +275,7 @@ if COMPARE_LOSSES:
     for ModelArchitecture in models:
         model = ModelArchitecture()
         # print(f'{model.__class__.__name__}_{n_grasps}_grasps')
-        loss_file = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}'  # _{num_grasps}_losses.csv'
+        loss_file = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_dropout_losses'  # _{num_grasps}_losses.csv'
         if ITERATIVE:
             plot_losses(loss_file, model)
         else:
