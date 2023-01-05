@@ -32,14 +32,78 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 
-TRAIN_MODEL = True
-TEST_MODEL = True
-USE_PREVIOUS = True
-COMPARE_LOSSES = False
+TRAIN_MODEL = False
+TEST_MODEL = False
+USE_PREVIOUS = False
+COMPARE_LOSSES = True
 ITERATIVE = True
 RNN = True
 ONLINE_VALIDATION = False
 TUNING = True
+
+
+'''This is where the model can either be tuned and updated, or learnt from scratch with the combined data'''
+if TUNING:
+    PREP_TUNE = False
+    n_epochs = 200
+    if PREP_TUNE:
+        '''organise the data into 'dataloaders' manually for the tuning with varied batches across epochs
+        The maxima are taken out of the training data to be used for normalisation in each dataset'''
+        train_maxes, train_data, train_labels = organise_tuning_data(f'{DATA_FOLDER}shifted_shuffled_train_data.npy',
+                                                                     f'{DATA_FOLDER}shifted_shuffled_train_labels.npy',
+                                                                     f'{DATA_FOLDER}tuning_shuffled_train_data.npy',
+                                                                     f'{DATA_FOLDER}tuning_shuffled_train_labels.npy',
+                                                                     n_epochs, batch_size)
+        _, test_data, test_labels = organise_tuning_data(f'{DATA_FOLDER}shifted_shuffled_test_data.npy',
+                                                         f'{DATA_FOLDER}shifted_shuffled_test_labels.npy',
+                                                         f'{DATA_FOLDER}tuning_shuffled_test_data.npy',
+                                                         f'{DATA_FOLDER}tuning_shuffled_test_labels.npy',
+                                                         n_epochs, batch_size, train_maxes)
+        _, val_data, val_labels = organise_tuning_data(f'{DATA_FOLDER}shifted_shuffled_val_data.npy',
+                                                       f'{DATA_FOLDER}shifted_shuffled_val_labels.npy',
+                                                       f'{DATA_FOLDER}tuning_shuffled_val_data.npy',
+                                                       f'{DATA_FOLDER}tuning_shuffled_val_labels.npy',
+                                                       n_epochs, batch_size, train_maxes)
+
+        np.save(f'{DATA_FOLDER}sorted_train_data.npy', train_data.astype(np.float32)) # save as float for the network
+        np.save(f'{DATA_FOLDER}sorted_train_labels.npy', train_labels)
+        np.save(f'{DATA_FOLDER}sorted_test_data.npy', test_data.astype(np.float32))
+        np.save(f'{DATA_FOLDER}sorted_test_labels.npy', test_labels)
+        np.save(f'{DATA_FOLDER}sorted_val_data.npy', val_data.astype(np.float32))
+        np.save(f'{DATA_FOLDER}sorted_val_labels.npy', val_labels)
+    train_data = np.load(f'{DATA_FOLDER}sorted_train_data.npy')
+    train_labels = np.load(f'{DATA_FOLDER}sorted_train_labels.npy')
+    test_data = np.load(f'{DATA_FOLDER}sorted_test_data.npy')
+    test_labels = np.load(f'{DATA_FOLDER}sorted_test_labels.npy')
+    val_data = np.load(f'{DATA_FOLDER}sorted_val_data.npy')
+    val_labels = np.load(f'{DATA_FOLDER}sorted_val_labels.npy')
+    model = models[0]()
+    model_name = model.__class__.__name__
+
+    if USE_PREVIOUS:
+        '''either use the previous model and update, or train from scratch'''
+        model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_dropout_model_state.pt'
+        if exists(model_state):
+            model.load_state_dict(torch.load(model_state))
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    criterion = nn.CrossEntropyLoss()
+    model, batch_params, batch_losses = tune_RNN_network(model, train_data, train_labels, test_data, test_labels,
+                                                         optimizer,
+                                                         criterion, classes, batch_size,
+                                                         n_epochs, max_patience=50,
+                                                         save_folder=MODEL_SAVE_FOLDER,
+                                                         save=True,
+                                                         show=True)
+
+    """test_tuned_model will return the predicted vs true labels for use in confusion matrix plotting"""
+    true_labels, pred_labels, grasp_true, grasp_pred = test_tuned_model(model, val_data, val_labels, n_epochs,
+                                                                        batch_size, classes, criterion)
+    model_file = f'{MODEL_SAVE_FOLDER}{model_name}_labels'
+
+    df = pd.DataFrame(columns=["True Values", "Pred Values"])
+    df["True Values"], df["Pred Values"] = true_labels, pred_labels
+    plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
+    print('finished')
 
 # load grasp datasets
 train_data = ObjectGraspsDataset(f'{DATA_FOLDER}{FILE_PREFIX}shuffled_train_data.npy',
