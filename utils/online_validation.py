@@ -30,8 +30,8 @@ def format_rows(data, norm_vals, start_idx, norm=True):
     """Take only the first and last rows to find the delta between them but check for a DC shift"""
     all_data_list = []  # np.empty((0, 19))
     final_idx = len(data)
-    if len(data[start_idx+1:]) != 0:
-        data = data[start_idx+1:]
+    if len(data[start_idx + 1:]) != 0:
+        data = data[start_idx + 1:]
     else:
         start_idx = 0
         data = data[start_idx + 1:]
@@ -39,7 +39,7 @@ def format_rows(data, norm_vals, start_idx, norm=True):
         if len(data[row[0]]) > 100:
             all_data_list.append(list(map(int, data[row[0]].split(";")[-20:-1])))
         # else:
-            # final_idx -= 1
+        # final_idx -= 1
     all_data_arr = np.array(all_data_list)
     plt.plot(all_data_arr)
     plt.show()
