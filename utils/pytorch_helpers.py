@@ -98,7 +98,8 @@ def plot_model(best_loss, train_loss, test_loss, type_train, type_test, type):
 def early_stopping(loss_dict, patience, max_patience, test_loss, train_loss, train_acc, test_acc, epoch, model,
                    best_params):
     early_stop = False
-    if loss_dict['test_acc'] is None or test_acc > loss_dict['test_acc']:
+    loss_sum = test_acc + train_acc
+    if loss_dict['test_acc'] is None or loss_sum > loss_dict['test_acc'] + loss_dict['train_acc']:
 
         loss_dict = {'train_loss': train_loss, 'test_loss': test_loss, 'train_acc': train_acc,
                      'test_acc': test_acc, 'epoch': epoch}
