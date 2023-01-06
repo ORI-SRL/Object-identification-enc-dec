@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.widgets as wgt
 import matplotlib.patches as mpatch
 from matplotlib.patches import FancyBboxPatch
-import serial
+# import serial
 import time
 from utils.ml_classifiers import *
 from utils.pytorch_helpers import *
@@ -349,7 +349,7 @@ def organise_tuning_data(old_data_file, old_labels_file, new_data_file, new_labe
             epoch_data_out = np.append(epoch_data_out, data2_batch, axis=1)
             epoch_labels_out = np.append(epoch_labels_out, data1_labels, axis=1)
             epoch_labels_out = np.append(epoch_labels_out, data2_labels, axis=1)
-        if 'data_out' is None:
+        if data_out is None:
             data_out = epoch_data_out
             labels_out = epoch_labels_out
         else:
@@ -359,47 +359,75 @@ def organise_tuning_data(old_data_file, old_labels_file, new_data_file, new_labe
     return sensor_maxima, data_out, labels_out
 
 
-def tune_RNN_network(model, train_loader, train_labels, test_loader, test_labels, optimizer, criterion, classes,
-                     batch_size, n_epochs=50, max_patience=25, save_folder='./', save=True, show=True):
+def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new_data=None, n_epochs=50,
+                     max_patience=25, save_folder='./', save=True, show=True):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
     hidden_size = 7
 
     """Convert data into tensors"""
-    train_loader = torch.tensor(train_loader)
-    test_loader = torch.tensor(test_loader)
+    old_train_data, old_valid_data, _ = old_data
+    new_train_data, new_valid_data, _ = new_data
+
     """Calculate how many batches there are"""
-    n_train_batches = int(train_loader.size(1) / batch_size)
-    n_test_batches = int(test_loader.size(1) / batch_size)
+
+    batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
+    half_batch = int(batch_size/2)
+
+    train_batch_reminder = len(new_train_data) % half_batch
+    valid_batch_reminder = len(new_valid_data) % half_batch
+
+    n_train_batches = int(len(new_train_data) / half_batch) if train_batch_reminder == 0 else int(len(new_train_data) / half_batch) + 1
+    n_valid_batches = int(len(new_valid_data) / half_batch) if valid_batch_reminder == 0 else int(len(new_valid_data) / half_batch) + 1
+
+    old_train_indeces = list(range(len(old_train_data)))
+    old_valid_indeces = list(range(len(old_valid_data)))
+
+    new_train_indeces = list(range(len(new_train_data)))
+    new_valid_indeces = list(range(len(new_valid_data)))
+
     for epoch in range(n_epochs):
-        train_loss, test_loss, train_accuracy, test_accuracy = 0.0, 0.0, 0.0, 0.0
+        train_loss, valid_loss, train_accuracy, valid_accuracy = 0.0, 0.0, 0.0, 0.0
         cycle = 0
         confusion_ints = torch.zeros((7, 7)).to(device)
         grasp_accuracy = torch.zeros((10, 2)).to(device)
         model.train()
+
+        random.shuffle(old_train_indeces)
+        random.shuffle(old_valid_indeces)
+        random.shuffle(new_train_indeces)
+        random.shuffle(new_valid_indeces)
+
         for i in range(n_train_batches):
+
             # Take each training batch and process
-            frame = train_loader[epoch, i * batch_size:i * batch_size + batch_size, :, :].reshape(-1, 10, 19).to(device)
-            frame_labels = train_labels[epoch, i * batch_size:i * batch_size + batch_size]
+            batch_start = i * half_batch
+            batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_train_data) else len(new_train_data)
+
+            X_old, y_old, _ = old_train_data[old_train_indeces[batch_start:batch_end]]
+            X_new, y_new, _ = new_train_data[new_train_indeces[batch_start:batch_end]]
+
+            X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+            y = torch.cat([y_old, y_new], dim=0).to(device)
+
+            # frame_labels = train_labels[epoch, i * batch_size:i * batch_size + batch_size]
             frame_loss = 0
 
             # randomly switch in zero rows to vary the number of grasps being identified
             padded_start = np.random.randint(1, 11)
-            frame[:, padded_start:, :] = 0
-            nul_rows = frame.sum(dim=2) != 0
-            frame = frame[:, :padded_start, :]
+            X = X[:, :padded_start, :]
 
             # convert frame_labels to numeric and allocate to tensor
-            enc_lab = encode_labels(frame_labels, classes).to(device)
+            # y = encode_labels(frame_labels, classes).to(device)
 
             # set hidden layer
-            hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
+            hidden = torch.full((X.size(0), hidden_size), 1 / 7).to(device)
 
             optimizer.zero_grad()
             """ iterate through each grasp and run the model """
             for j in range(padded_start):
-                output = model(frame[:, j, :].float(), hidden)
-                loss = criterion(output, enc_lab)
+                output = model(X[:, j, :], hidden)
+                loss = criterion(output, y.squeeze())
                 hidden = copy.copy(output)
                 frame_loss += loss  # sum loss at every loop
             frame_loss.backward()
@@ -407,7 +435,7 @@ def tune_RNN_network(model, train_loader, train_labels, test_loader, test_labels
             # output = nn.functional.softmax(output, dim=-1)
 
             _, inds = output.max(dim=1)
-            frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
+            frame_accuracy = torch.sum(inds == y.flatten()).cpu().numpy() / len(inds)
             train_accuracy += frame_accuracy
             grasp_accuracy[padded_start - 1, 1] += 1
             grasp_accuracy[padded_start - 1, 0] += frame_accuracy
@@ -422,72 +450,75 @@ def tune_RNN_network(model, train_loader, train_labels, test_loader, test_labels
 
         grasp_accuracy = torch.zeros((10, 2)).to(device)
         model.eval()
-        for i in range(n_test_batches):
-            # Take each test batch and run the model
-            frame_in = test_loader[epoch, i * batch_size:i * batch_size + batch_size, :, :].reshape(-1, 10, 19).to(
-                device)
-            frame_labels = test_labels[epoch, i * batch_size:i * batch_size + batch_size]
+        for i in range(n_valid_batches):
+
+            # Take each validation batch and process
+            batch_start = i * batch_size
+            batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(new_valid_data) else len(new_valid_data)
+
+            X_old, y_old, _ = old_valid_data[old_valid_indeces[batch_start:batch_end]]
+            X_new, y_new, _ = new_valid_data[new_valid_indeces[batch_start:batch_end]]
+
+            X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+            y = torch.cat([y_old, y_new], dim=0).to(device)
+
+            # frame_labels = train_labels[epoch, i * batch_size:i * batch_size + batch_size]
             frame_loss = 0
+
             # randomly switch in zero rows to vary the number of grasps being identified
             padded_start = np.random.randint(1, 11)
-            frame_in[:, padded_start:, :] = 0
-            nul_rows = frame_in.sum(dim=2) != 0
-
-            # take only the rows that are non-zero
-            frame = frame_in[:, :padded_start, :]
-            # convert frame_labels to numeric and allocate to tensor
-            enc_lab = encode_labels(frame_labels, classes).to(device)
-
-            # set hidden layer
-            hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
+            X = X[:, :padded_start, :]
 
             # set the first hidden layer as a vanilla prediction or zeros
-            hidden = torch.zeros(frame.size(0), hidden_size).to(device)
+            hidden = torch.zeros(X.size(0), hidden_size).to(device)
 
             """ Run the model through each grasp """
             for j in range(padded_start):
-                output = model(frame[:, j, :].float(), hidden)
-                loss3 = criterion(output, enc_lab)
+                output = model(X[:, j, :].float(), hidden)
+                loss3 = criterion(output, y.squeeze())
                 hidden = copy.copy(output)
                 frame_loss += loss3
-            test_loss += frame_loss / padded_start
+            valid_loss += frame_loss / padded_start
             _, inds = output.max(dim=1)
-            frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
-            test_accuracy += frame_accuracy
+            frame_accuracy = torch.sum(inds == y.flatten()).cpu().numpy() / len(inds)
+            valid_accuracy += frame_accuracy
             grasp_accuracy[padded_start - 1, 1] += 1
             grasp_accuracy[padded_start - 1, 0] += frame_accuracy
-            for n, _ in enumerate(enc_lab):
-                row = enc_lab[n]
+            for n, _ in enumerate(y):
+                row = y[n]
                 col = inds[n]
                 confusion_ints[row, col] += 1
 
         # calculate the testing accuracy and losses and divide by the number of batches
-        test_accuracy = test_accuracy / n_test_batches
-        test_loss = test_loss.detach().cpu() / n_test_batches
-        test_loss_out.append(test_loss)
-        test_acc_out.append(test_accuracy)
+        valid_accuracy = valid_accuracy / n_valid_batches
+        valid_loss = valid_loss.detach().cpu() / n_valid_batches
+        test_loss_out.append(valid_loss)
+        test_acc_out.append(valid_accuracy)
         confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=1)
         grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
         grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
 
-        print('Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \t Training accuracy {:.2f} '
+        print('Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \t Validation accuracy {:.2f} '
               '\t Testing accuracy {:.2f}'
-              .format(epoch, train_loss, test_loss, train_accuracy, test_accuracy))
+              .format(epoch, train_loss, valid_loss, train_accuracy, valid_accuracy))
         # empty cache to prevent overusing the memory
         torch.cuda.empty_cache()
         # Early Stopping Logic
-        early_stop, best_loss_dict, patience, best_params = early_stopping(best_loss_dict, patience, max_patience,
-                                                                           test_loss, train_loss, train_accuracy,
-                                                                           test_accuracy, epoch, model, best_params)
-        if early_stop:
+
+        if best_loss_dict['valid_loss'] is None or valid_loss < best_loss_dict['valid_loss']:
+            best_params = copy.copy(model.state_dict())
+            best_loss_dict = {'train_loss': train_loss, 'valid_loss': valid_loss, 'train_acc': train_accuracy,
+                         'valid_acc': valid_accuracy, 'epoch': epoch}
+            patience = 0
+        else:
+            patience += 1
+
+        if patience >= max_patience:
             break
-        loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_accuracy': train_acc_out,
-                     'testing_accuracy': test_acc_out}
-        if epoch == 198:
-            epoch = 0
+
     if save and best_params is not None:
         model_file = f'{save_folder}{model_name}_dropout631'
-        save_params(model_file, loss_dict, best_params)
+        save_params(model_file, best_loss_dict, best_params)
 
     if show:
         # plot model losses
@@ -496,7 +527,7 @@ def tune_RNN_network(model, train_loader, train_labels, test_loader, test_labels
     return model, best_params, best_loss_dict
 
 
-def test_tuned_model(model, val_data, val_labels, n_epochs, batch_size, classes, criterion):
+def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data = None, new_data=None):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
 
@@ -509,40 +540,65 @@ def test_tuned_model(model, val_data, val_labels, n_epochs, batch_size, classes,
     true_labels = []
     pred_labels = []
     hidden_size = 7
-    sm = nn.Softmax(dim=1)
 
-    val_loader = torch.tensor(val_data) # convert data to tensors
-    n_val_batches = int(val_loader.size(1) / batch_size)
+    """Convert data into tensors"""
+    _, _, old_test_data = old_data
+    _, _, new_test_data = new_data
+
+    """Calculate how many batches there are"""
+
+    batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
+    half_batch = batch_size/2
+
+    test_batch_reminder = len(new_test_data) % half_batch
+
+    n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(len(new_test_data) / half_batch) + 1
+
+    old_test_indeces = list(range(len(old_test_data)))
+    new_test_indeces = list(range(len(new_test_data)))
+
     model.eval()
-    for epoch in range(10): # just use 10 epochs to save time
-        for i in range(n_val_batches):
-            # take the next frame from the data_loader and process it through the model
-            frame = val_loader[epoch, i * batch_size:i * batch_size + batch_size, :, :].reshape(-1, 10, 19).to(device)
-            frame_labels = val_labels[epoch, i * batch_size:i * batch_size + batch_size]
+    for epoch in range(n_epochs):
+        test_loss, valid_loss, test_accuracy, valid_accuracy = 0.0, 0.0, 0.0, 0.0
+
+        random.shuffle(old_test_indeces)
+        random.shuffle(new_test_indeces)
+
+        for i in range(n_test_batches):
+
+            # Take each testing batch and process
+            batch_start = i * batch_size
+            batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(new_test_data) else len(new_test_data)
+
+            X_old, y_old, y_labels_old = old_test_data[old_test_indeces[batch_start:batch_end]]
+            X_new, y_new, y_labels_new = new_test_data[new_test_indeces[batch_start:batch_end]]
+
+            X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+            y = torch.cat([y_old, y_new], dim=0).to(device)
+            y_labels = np.concatenate([y_labels_old, y_labels_new])
+
+            # frame_labels = test_labels[epoch, i * batch_size:i * batch_size + batch_size]
             frame_loss = 0
+
             # randomly switch in zero rows to vary the number of grasps being identified
-            padded_rows_start = np.random.randint(1, 11)
-            frame[:, padded_rows_start:, :] = 0
-            enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
-            # set the initial guess as a flat probability for each object
-            pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
+            padded_start = np.random.randint(1, 11)
+            X = X[:, :padded_start, :]
 
-            # run the model and calculate loss
+            # convert frame_labels to numeric and allocate to tensor
+            # y = encode_labels(frame_labels, classes).to(device)
 
-            hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
+            # set hidden layer
+            hidden = torch.full((X.size(0), hidden_size), 1 / 7).to(device)
 
-            for i in range(padded_rows_start):
-                # frm = copy.deepcopy(frame[:, i, :])
-                # frm.requires_grad_()
-                # hidden.requires_grad_()
-
-                output = model(frame[:, i, :], hidden)
+            """ iterate through each grasp and run the model """
+            for j in range(padded_start):
+                output = model(X[:, i, :], hidden)
                 score_max_index = output.argmax(1)  # class output across batches (dim=batch size)
                 # score_max = output[range(output.shape[0]),
                 #    score_max_index.data].mean()  # make sure this vector is dim=batch size, AND NOT A MATRIX
                 # score_max.backward()
 
-                loss2 = criterion(hidden, enc_lab)
+                loss2 = criterion(hidden, y.squeeze())
                 hidden = copy.copy(output)
                 output.detach()
 
@@ -551,26 +607,27 @@ def test_tuned_model(model, val_data, val_labels, n_epochs, batch_size, classes,
 
             # calculate accuracy of classification
             _, inds = last_frame.max(dim=1)
-            frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / batch_size
+            frame_accuracy = torch.sum(inds == y.flatten()).cpu().numpy() / batch_size
             test_accuracy += frame_accuracy
-            grasp_accuracy[padded_rows_start - 1, 1] += 1
-            grasp_accuracy[padded_rows_start - 1, 0] += frame_accuracy
+            grasp_accuracy[padded_start - 1, 1] += 1
+            grasp_accuracy[padded_start - 1, 0] += frame_accuracy
 
             # use indices of objects to form confusion matrix
-            for n, _ in enumerate(enc_lab):
-                row = enc_lab[n]
+            for n, _ in enumerate(y.squeeze()):
+                row = y[n]
                 col = inds[n]
-                confusion_ints[padded_rows_start - 1, row, col] += 1
+                confusion_ints[padded_start - 1, row, col] += 1
                 # add the prediction and true to the grasp_labels dict
-                grasp_num = get_nth_key(grasp_pred_labels, padded_rows_start - 1)
+                grasp_num = get_nth_key(grasp_pred_labels, padded_start - 1)
                 grasp_true_labels[grasp_num].append(classes[row])
                 grasp_pred_labels[grasp_num].append(classes[col])
 
-            pred_labels.extend(decode_labels(inds, classes))
-            true_labels.extend(frame_labels)
 
-    test_accuracy = test_accuracy / n_val_batches / 10
-    test_loss = test_loss / n_val_batches / 10
+            pred_labels.extend(old_test_data.decode_labels(inds.cpu().numpy()))
+            true_labels.extend(y_labels.squeeze().tolist())
+
+    test_accuracy = test_accuracy / n_test_batches / 10
+    test_loss = test_loss / n_test_batches / 10
     test_loss_out.append(test_loss)
     test_acc_out.append(test_accuracy)
     grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]

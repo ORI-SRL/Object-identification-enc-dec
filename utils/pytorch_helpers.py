@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import csv
@@ -44,12 +45,12 @@ def encode_labels(labels, classes):
     return encoded_label_frame
 
 
-def decode_labels(preds, classes):
-    # encoded_label_frame = torch.zeros((len(labels), 1, 7), dtype=torch.float)  #
-    decoded_label_frame = []  #
-    for i, _ in enumerate(preds):
-        decoded_label_frame.append(classes[preds[i]])
-    return decoded_label_frame
+# def decode_labels(preds, classes):
+#     # encoded_label_frame = torch.zeros((len(labels), 1, 7), dtype=torch.float)  #
+#     decoded_label_frame = []  #
+#     for i, _ in enumerate(preds):
+#         decoded_label_frame.append(classes[preds[i]])
+#     return decoded_label_frame
 
 
 def gamma_loss(x_entropy, frame_out, labels):
@@ -72,37 +73,51 @@ def save_params(filename, loss, params):
     for key, val in loss.items():
         # write every key and value to file
         if torch.is_tensor(val):
-            val = [x.numpy() for x in val]
+            val = val.numpy()
         w.writerow([key, val])
 
 
-def plot_model(best_loss, train_loss, test_loss, type_train, type_test, type):
+def plot_model(best_loss, train_loss, valid_loss, train_acc, train_val, type):
     fig, [ax1, ax2] = plt.subplots(1, 2)
-    x = list(range(1, len(test_loss) + 1))
-    ax1.plot(x, train_loss, label="Training loss")
-    ax1.plot(x, test_loss, label="Testing loss")
-    ax1.plot(best_loss['epoch'], best_loss['train_loss'])
-    ax1.plot(best_loss['epoch'], best_loss['test_loss'])
+    x = list(range(1, len(valid_loss) + 1))
+    smoothing_level = 5.
+
+    sm_train_loss = pd.DataFrame(train_loss).ewm(com=smoothing_level).mean()
+    p = ax1.plot(x, train_loss, alpha=.2)
+    ax1.plot(x, sm_train_loss, label="Training loss", alpha=.8, color=p[0].get_color())
+
+    sm_valid_loss = pd.DataFrame(valid_loss).ewm(com=smoothing_level).mean()
+    p = ax1.plot(x, valid_loss, alpha=.2)
+    ax1.plot(x, sm_valid_loss, label="Validation loss", alpha=.8, color=p[0].get_color())
+
     ax1.set_xlabel('epoch #')
     ax1.set_ylabel('Loss')
     ax1.legend()
-    ax2.plot(type_train, label=f"Training {type}")
-    ax2.plot(type_test, label=f"Testing {type}")
-    ax2.plot(best_loss['epoch'], best_loss['train_acc'])
-    ax2.plot(best_loss['epoch'], best_loss['test_acc'])
+
+    train_acc = np.array(train_acc)*100
+    train_val = np.array(train_val)*100
+
+    sm_train_acc = pd.DataFrame(train_acc).ewm(com=smoothing_level).mean()
+    p = ax2.plot(train_acc, alpha=.2)
+    ax2.plot(sm_train_acc, label=f"Training {type}", alpha=.8, color=p[0].get_color())
+
+    sm_valid_acc = pd.DataFrame(train_val).ewm(com=smoothing_level).mean()
+    p = ax2.plot(train_val, alpha=0.2)
+    ax2.plot(sm_valid_acc, label=f"Validation {type}", alpha=.8, color=p[0].get_color())
+
     ax2.set_xlabel('epoch #')
-    ax2.set_ylabel('Accuracy')
+    ax2.set_ylabel('Accuracy (%)')
     ax2.legend()
 
 
-def early_stopping(loss_dict, patience, max_patience, test_loss, train_loss, train_acc, test_acc, epoch, model,
+def early_stopping(loss_dict, patience, max_patience, valid_loss, train_loss, train_acc, valid_acc, epoch, model,
                    best_params):
     early_stop = False
-    loss_sum = test_acc + train_acc
-    if loss_dict['test_acc'] is None or loss_sum > loss_dict['test_acc'] + loss_dict['train_acc']:
+    loss_sum = valid_acc + train_acc
+    if loss_dict['test_acc'] is None or valid_acc > loss_dict['test_acc']:
 
-        loss_dict = {'train_loss': train_loss, 'test_loss': test_loss, 'train_acc': train_acc,
-                     'test_acc': test_acc, 'epoch': epoch}
+        loss_dict = {'train_loss': train_loss, 'test_loss': valid_loss, 'train_acc': train_acc,
+                     'test_acc': valid_acc, 'epoch': epoch}
         patience = 0
         best_params = copy.copy(model.state_dict())
     else:
@@ -135,8 +150,8 @@ def model_init(model, n_grasps=None):
     test_acc_out = []
 
     patience = 0
-    best_loss_dict = {'train_loss': None, 'test_loss': None, 'train_acc': None,
-                      'test_acc': None, 'epoch': None}
+    best_loss_dict = {'train_loss': None, 'valid_loss': None, 'train_acc': None,
+                      'valid_acc': None, 'epoch': None}
     best_params = None
     return model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
            best_params

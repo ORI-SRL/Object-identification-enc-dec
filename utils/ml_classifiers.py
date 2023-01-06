@@ -177,3 +177,5 @@ def plot_confusion(data, labels, model_fit, n_grasps, iter=False):
     cm_display_percentages = sns.heatmap(cm, annot=True, fmt='.1%', cmap='Blues', xticklabels=unique_labels,
                                          yticklabels=unique_labels, vmin=0, vmax=1).plot()
     # / (len(labels) / len(unique_labels)
+
+    plt.show()
