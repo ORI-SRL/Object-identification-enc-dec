@@ -99,7 +99,7 @@ class IterativeRNN2(nn.Module):  # this takes in the previous prediction to info
         self.linOut = nn.Linear(64, 7)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
-        self.drop = nn.Dropout(0.05)
+        self.drop = nn.Dropout(0.15)
 
         self.softmax = nn.Softmax(dim=-1)
 
