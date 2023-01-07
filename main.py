@@ -76,7 +76,7 @@ if TUNING:
                                                          n_epochs=n_epochs,
                                                          old_data=(old_train_data, old_valid_data, old_test_data),
                                                          new_data=(new_train_data, new_valid_data, new_test_data),
-                                                         max_patience=50,
+                                                         max_patience=75,
                                                          save_folder=MODEL_SAVE_FOLDER,
                                                          save=True,
                                                          show=True)
@@ -90,6 +90,8 @@ if TUNING:
     df = pd.DataFrame(columns=["True Values", "Pred Values"])
     df["True Values"], df["Pred Values"] = true_labels, pred_labels
     plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
+    for grasp in grasp_true:
+        plot_confusion(grasp_pred[grasp], grasp_true[grasp], model_name, int(grasp), iter=True)
     print('finished')
 
 # # load grasp datasets
