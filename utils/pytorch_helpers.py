@@ -84,11 +84,11 @@ def plot_model(best_loss, train_loss, valid_loss, train_acc, train_val, type):
 
     sm_train_loss = pd.DataFrame(train_loss).ewm(com=smoothing_level).mean()
     p = ax1.plot(x, train_loss, alpha=.2)
-    ax1.plot(x, sm_train_loss, label="Training loss", alpha=.8, color=p[0].get_color())
+    ax1.plot(x, sm_train_loss.squeeze(), label="Training loss", alpha=.8, color=p[0].get_color())
 
     sm_valid_loss = pd.DataFrame(valid_loss).ewm(com=smoothing_level).mean()
     p = ax1.plot(x, valid_loss, alpha=.2)
-    ax1.plot(x, sm_valid_loss, label="Validation loss", alpha=.8, color=p[0].get_color())
+    ax1.plot(x, sm_valid_loss.squeeze(), label="Validation loss", alpha=.8, color=p[0].get_color())
 
     ax1.set_xlabel('epoch #')
     ax1.set_ylabel('Loss')
@@ -108,6 +108,7 @@ def plot_model(best_loss, train_loss, valid_loss, train_acc, train_val, type):
     ax2.set_xlabel('epoch #')
     ax2.set_ylabel('Accuracy (%)')
     ax2.legend()
+    fig.set_size_inches(12, 4.8)  # size in pixels
 
 
 def early_stopping(loss_dict, patience, max_patience, valid_loss, train_loss, train_acc, valid_acc, epoch, model,
@@ -122,7 +123,7 @@ def early_stopping(loss_dict, patience, max_patience, valid_loss, train_loss, tr
         best_params = copy.copy(model.state_dict())
     else:
         patience += 1
-    if patience >= max_patience:
+    if patience == max_patience:
         print(f'Early stopping: training terminated at epoch {epoch} due to es, '
               f'patience exceeded at {max_patience}')
         print(f'Best accuracies: Training: {loss_dict["train_acc"]} \t Testing: {loss_dict["test_acc"]}')
