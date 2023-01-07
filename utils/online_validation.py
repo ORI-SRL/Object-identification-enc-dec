@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.widgets as wgt
 import matplotlib.patches as mpatch
 from matplotlib.patches import FancyBboxPatch
-# import serial
+import serial
 import time
 from utils.ml_classifiers import *
 from utils.pytorch_helpers import *
@@ -388,11 +388,14 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
     new_train_indeces = list(range(len(new_train_data)))
     new_valid_indeces = list(range(len(new_valid_data)))
 
+    grasp_accuracy = torch.zeros((10, 2)).to(device)  # setup for accuracy at each grasp number
+    n_grasps = 10
+
     for epoch in range(n_epochs):
         train_loss, valid_loss, train_accuracy, valid_accuracy = 0.0, 0.0, 0.0, 0.0
         cycle = 0
         confusion_ints = torch.zeros((7, 7)).to(device)
-        grasp_accuracy = torch.zeros((10, 2)).to(device)
+
         model.train()
 
         random.shuffle(old_train_indeces)
@@ -496,9 +499,8 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
         valid_loss = valid_loss.detach().cpu() / n_valid_batches
         test_loss_out.append(valid_loss)
         test_acc_out.append(valid_accuracy)
+
         confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=1)
-        grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
-        grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
 
         print('Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \t Validation accuracy {:.2f} '
               '\t Testing accuracy {:.2f}'
@@ -510,7 +512,7 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
         if best_loss_dict['valid_loss'] is None or valid_loss < best_loss_dict['valid_loss']:
             best_params = copy.copy(model.state_dict())
             best_loss_dict = {'train_loss': train_loss, 'valid_loss': valid_loss, 'train_acc': train_accuracy,
-                         'valid_acc': valid_accuracy, 'epoch': epoch}
+                              'valid_acc': valid_accuracy, 'epoch': epoch}
             patience = 0
         else:
             patience += 1
@@ -525,11 +527,14 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
     if show:
         # plot model losses
         plot_model(best_loss_dict, train_loss_out, test_loss_out, train_acc_out, test_acc_out, type="accuracy")
-
+    grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
+    grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
+    print(f'Grasp accuracy: {grasp_accuracy}')
     return model, best_params, best_loss_dict
 
 
-def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data = None, new_data=None):
+def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=None, new_data=None):
+
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
 
