@@ -372,13 +372,15 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
     """Calculate how many batches there are"""
 
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
-    half_batch = int(batch_size/2)
+    half_batch = int(batch_size / 2)
 
     train_batch_reminder = len(new_train_data) % half_batch
     valid_batch_reminder = len(new_valid_data) % half_batch
 
-    n_train_batches = int(len(new_train_data) / half_batch) if train_batch_reminder == 0 else int(len(new_train_data) / half_batch) + 1
-    n_valid_batches = int(len(new_valid_data) / half_batch) if valid_batch_reminder == 0 else int(len(new_valid_data) / half_batch) + 1
+    n_train_batches = int(len(new_train_data) / half_batch) if train_batch_reminder == 0 else int(
+        len(new_train_data) / half_batch) + 1
+    n_valid_batches = int(len(new_valid_data) / half_batch) if valid_batch_reminder == 0 else int(
+        len(new_valid_data) / half_batch) + 1
 
     old_train_indeces = list(range(len(old_train_data)))
     old_valid_indeces = list(range(len(old_valid_data)))
