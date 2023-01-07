@@ -87,11 +87,14 @@ if TUNING:
                                                                         new_data=(new_train_data, new_valid_data, new_test_data))
     model_file = f'{MODEL_SAVE_FOLDER}{model_name}_labels'
 
-    df = pd.DataFrame(columns=["True Values", "Pred Values"])
-    df["True Values"], df["Pred Values"] = true_labels, pred_labels
-    plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
-    for grasp in grasp_true:
-        plot_confusion(grasp_pred[grasp], grasp_true[grasp], model_name, int(grasp), iter=True)
+    online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion,
+                              old_data=(old_train_data, old_valid_data, old_test_data),
+                              new_data=(new_train_data, new_valid_data, new_test_data))
+    # df = pd.DataFrame(columns=["True Values", "Pred Values"])
+    # df["True Values"], df["Pred Values"] = true_labels, pred_labels
+    # plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
+    # for grasp in grasp_true:
+    #     plot_confusion(grasp_pred[grasp], grasp_true[grasp], model_name, int(grasp), iter=True)
     print('finished')
 
 # # load grasp datasets
