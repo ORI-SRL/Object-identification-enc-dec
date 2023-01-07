@@ -407,96 +407,109 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
 
             # Take each training batch and process
             batch_start = i * half_batch
-            batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_train_data) else len(new_train_data)
+            batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_train_data) else len(
+                new_train_data)
 
-            X_old, y_old, _ = old_train_data[old_train_indeces[batch_start:batch_end]]
-            X_new, y_new, _ = new_train_data[new_train_indeces[batch_start:batch_end]]
+            padded_ints = list(range(n_grasps))
+            random.shuffle(padded_ints)
 
-            X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
-            y = torch.cat([y_old, y_new], dim=0).to(device)
+            for k, _ in enumerate(padded_ints):
+                X_old, y_old, _ = old_train_data[old_train_indeces[batch_start:batch_end]]
+                X_new, y_new, _ = new_train_data[new_train_indeces[batch_start:batch_end]]
 
-            # frame_labels = train_labels[epoch, i * batch_size:i * batch_size + batch_size]
-            frame_loss = 0
+                X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+                y_cat = torch.cat([y_old, y_new], dim=0).to(device)
+                batch_ints = list(range(len(y_cat)))
+                random.shuffle(batch_ints)
+                X = X_cat[batch_ints, :, :]
+                y = y_cat[batch_ints]
+                # frame_labels = train_labels[epoch, i * batch_size:i * batch_size + batch_size]
+                frame_loss = 0
 
-            # randomly switch in zero rows to vary the number of grasps being identified
-            padded_start = np.random.randint(1, 11)
-            X = X[:, :padded_start, :]
+                # randomly switch in zero rows to vary the number of grasps being identified
+                padded_start = padded_ints[k]  # np.random.randint(1, 11)
+                X = X[:, :padded_start+1, :]
 
-            # convert frame_labels to numeric and allocate to tensor
-            # y = encode_labels(frame_labels, classes).to(device)
+                # convert frame_labels to numeric and allocate to tensor
+                # y = encode_labels(frame_labels, classes).to(device)
 
-            # set hidden layer
-            hidden = torch.full((X.size(0), hidden_size), 1 / 7).to(device)
+                # set hidden layer
+                hidden = torch.full((X.size(0), hidden_size), 1 / 7).to(device)
 
-            optimizer.zero_grad()
-            """ iterate through each grasp and run the model """
-            for j in range(padded_start):
-                output = model(X[:, j, :], hidden)
-                loss = criterion(output, y.squeeze())
-                hidden = copy.copy(output)
-                frame_loss += loss  # sum loss at every loop
-            frame_loss.backward()
-            optimizer.step()
-            # output = nn.functional.softmax(output, dim=-1)
+                optimizer.zero_grad()
+                """ iterate through each grasp and run the model """
+                for j in range(padded_start+1):
+                    output = model(X[:, j, :], hidden)
+                    loss = criterion(output, y.squeeze())
+                    hidden = copy.copy(output)
+                    frame_loss += loss  # sum loss at every loop
+                frame_loss.backward()
+                optimizer.step()
+                # output = nn.functional.softmax(output, dim=-1)
 
-            _, inds = output.max(dim=1)
-            frame_accuracy = torch.sum(inds == y.flatten()).cpu().numpy() / len(inds)
-            train_accuracy += frame_accuracy
-            grasp_accuracy[padded_start - 1, 1] += 1
-            grasp_accuracy[padded_start - 1, 0] += frame_accuracy
-            train_loss += frame_loss / padded_start
-            cycle += 1
-        train_loss = train_loss.detach().cpu() / n_train_batches
-        train_accuracy = train_accuracy / n_train_batches
+                _, inds = output.max(dim=1)
+                frame_accuracy = torch.sum(inds == y.flatten()).cpu().numpy() / len(inds)
+                train_accuracy += frame_accuracy
+                train_loss += frame_loss / (padded_start + 1)
+                cycle += 1
+        train_loss = train_loss.detach().cpu() / n_train_batches / 10
+        train_accuracy = train_accuracy / n_train_batches / 10
         train_loss_out.append(train_loss)
         train_acc_out.append(train_accuracy)
-        grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
-        grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
 
-        grasp_accuracy = torch.zeros((10, 2)).to(device)
         model.eval()
         for i in range(n_valid_batches):
 
             # Take each validation batch and process
             batch_start = i * batch_size
-            batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(new_valid_data) else len(new_valid_data)
+            batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(new_valid_data) else len(
+                new_valid_data)
 
             X_old, y_old, _ = old_valid_data[old_valid_indeces[batch_start:batch_end]]
             X_new, y_new, _ = new_valid_data[new_valid_indeces[batch_start:batch_end]]
 
-            X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
-            y = torch.cat([y_old, y_new], dim=0).to(device)
+            padded_ints = list(range(n_grasps))
+            random.shuffle(padded_ints)
 
-            # frame_labels = train_labels[epoch, i * batch_size:i * batch_size + batch_size]
-            frame_loss = 0
+            for k, _ in enumerate(padded_ints):
 
-            # randomly switch in zero rows to vary the number of grasps being identified
-            padded_start = np.random.randint(1, 11)
-            X = X[:, :padded_start, :]
+                X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+                y_cat = torch.cat([y_old, y_new], dim=0).to(device)
+                batch_ints = list(range(len(y_cat)))
+                random.shuffle(batch_ints)
+                X = X_cat[batch_ints, :, :]
+                y = y_cat[batch_ints]
+                # frame_labels = train_labels[epoch, i * batch_size:i * batch_size + batch_size]
+                frame_loss = 0
 
-            # set the first hidden layer as a vanilla prediction or zeros
-            hidden = torch.zeros(X.size(0), hidden_size).to(device)
+                # randomly switch in zero rows to vary the number of grasps being identified
+                padded_start = padded_ints[k]  # np.random.randint(1, 11)
+                X = X[:, :padded_start+1, :]
+                # y = y[:, :padded_start]
 
-            """ Run the model through each grasp """
-            for j in range(padded_start):
-                output = model(X[:, j, :].float(), hidden)
-                loss3 = criterion(output, y.squeeze())
-                hidden = copy.copy(output)
-                frame_loss += loss3
-            valid_loss += frame_loss / padded_start
-            _, inds = output.max(dim=1)
-            frame_accuracy = torch.sum(inds == y.flatten()).cpu().numpy() / len(inds)
-            valid_accuracy += frame_accuracy
-            grasp_accuracy[padded_start - 1, 1] += 1
-            grasp_accuracy[padded_start - 1, 0] += frame_accuracy
-            for n, _ in enumerate(y):
-                row = y[n]
-                col = inds[n]
-                confusion_ints[row, col] += 1
+                # set the first hidden layer as a vanilla prediction or zeros
+                hidden = torch.zeros(X.size(0), hidden_size).to(device)
+
+                """ Run the model through each grasp """
+                for j in range(padded_start+1):
+                    output = model(X[:, j, :].float(), hidden)
+                    loss3 = criterion(output, y.squeeze())
+                    hidden = copy.copy(output)
+                    frame_loss += loss3
+                valid_loss += frame_loss / (padded_start + 1)
+                _, inds = output.max(dim=1)
+                frame_accuracy = torch.sum(inds == y.flatten()).cpu().numpy() / len(inds)
+                valid_accuracy += frame_accuracy
+                for n, _ in enumerate(y):
+                    row = y[n]
+                    col = inds[n]
+                    confusion_ints[row, col] += 1
+                grasp_accuracy[padded_start - 1, 1] += 1
+                grasp_accuracy[padded_start - 1, 0] += frame_accuracy
 
         # calculate the testing accuracy and losses and divide by the number of batches
-        valid_accuracy = valid_accuracy / n_valid_batches
-        valid_loss = valid_loss.detach().cpu() / n_valid_batches
+        valid_accuracy = valid_accuracy / n_valid_batches / 10
+        valid_loss = valid_loss.detach().cpu() / n_valid_batches / 10
         test_loss_out.append(valid_loss)
         test_acc_out.append(valid_accuracy)
 
@@ -549,24 +562,26 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     hidden_size = 7
 
     """Convert data into tensors"""
+    # _, _, old_test_data = old_data
+    # _, _, new_test_data = new_data
     _, _, old_test_data = old_data
     _, _, new_test_data = new_data
-
     """Calculate how many batches there are"""
 
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
-    half_batch = batch_size/2
+    half_batch = batch_size / 2
 
     test_batch_reminder = len(new_test_data) % half_batch
 
-    n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(len(new_test_data) / half_batch) + 1
+    n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
+        len(new_test_data) / half_batch) + 1
 
     old_test_indeces = list(range(len(old_test_data)))
     new_test_indeces = list(range(len(new_test_data)))
 
     model.eval()
+
     for epoch in range(n_epochs):
-        test_loss, valid_loss, test_accuracy, valid_accuracy = 0.0, 0.0, 0.0, 0.0
 
         random.shuffle(old_test_indeces)
         random.shuffle(new_test_indeces)
@@ -575,7 +590,8 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
 
             # Take each testing batch and process
             batch_start = i * batch_size
-            batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(new_test_data) else len(new_test_data)
+            batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(new_test_data) else len(
+                new_test_data)
 
             X_old, y_old, y_labels_old = old_test_data[old_test_indeces[batch_start:batch_end]]
             X_new, y_new, y_labels_new = new_test_data[new_test_indeces[batch_start:batch_end]]
@@ -629,12 +645,11 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
                 grasp_true_labels[grasp_num].append(classes[row])
                 grasp_pred_labels[grasp_num].append(classes[col])
 
-
             pred_labels.extend(old_test_data.decode_labels(inds.cpu().numpy()))
             true_labels.extend(y_labels.squeeze().tolist())
 
-    test_accuracy = test_accuracy / n_test_batches / 10
-    test_loss = test_loss / n_test_batches / 10
+    test_accuracy = test_accuracy / n_epochs
+    test_loss = test_loss / n_epochs
     test_loss_out.append(test_loss)
     test_acc_out.append(test_accuracy)
     grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
