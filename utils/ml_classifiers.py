@@ -167,11 +167,11 @@ def plot_confusion(data, labels, model_fit, n_grasps, iter=False):
         pred_labels = model_fit.predict(data)
     cm = confusion_matrix(labels, pred_labels, labels=unique_labels)
     # cm_display = ConfusionMatrixDisplay(cm, display_labels=unique_labels).plot()
-    # cm_display.ax_.set_title(f'{n_grasps} grasps - {model_fit.__class__.__name__}')
     cm = cm.astype('float64')
     for row in range(len(unique_labels)):
         cm[row, :] = cm[row, :] / labels.count(unique_labels[row])
     fig = plt.figure()
+    plt.title(f'{n_grasps} grasps - {model_fit.__class__.__name__}')
     fig.set_size_inches(8, 5)
     sns.set(font_scale=1.2)
     cm_display_percentages = sns.heatmap(cm, annot=True, fmt='.1%', cmap='Blues', xticklabels=unique_labels,
@@ -179,3 +179,5 @@ def plot_confusion(data, labels, model_fit, n_grasps, iter=False):
     # / (len(labels) / len(unique_labels)
 
     plt.show()
+
+

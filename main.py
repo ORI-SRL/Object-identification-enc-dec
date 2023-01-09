@@ -3,6 +3,8 @@
 import os
 # from os.path import exists
 # import csv
+import random
+
 import pandas as pd
 import torch
 
@@ -13,25 +15,28 @@ from utils.networks import *
 # from utils.ml_classifiers import *
 from utils.loss_plotting import *
 from utils.online_validation import *
-import numpy as np
+
 
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = "./data/validation_data_523/"
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/shifted/'
 FILE_PREFIX = "shifted_"
 n_grasps = [10]  # , 7, 5, 3, 1]
-models = [IterativeRNN2]  # TwoLayerConv, , TwoLayerWDropout IterativeRNN2
+models = [IterativeRNN4]  # TwoLayerConv, , TwoLayerWDropout IterativeRNN2
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
 train_ratio, valid_ratio = .6, .2  # test will be the remaining .2
 
+
+SEED = 123
 # luca: seeding the experiment is useful to get reproducible results
-seed_experiment(123)
+seed_experiment(SEED)
 # Define the object classes
 classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
+n_epochs = 1000
 
 TRAIN_MODEL = False
 TEST_MODEL = False
@@ -46,7 +51,6 @@ TUNING = True
 '''This is where the model can either be tuned and updated, or learnt from scratch with the combined data'''
 if TUNING:
     PREP_TUNE = True
-    n_epochs = 1000
 
     print("Creating 'old' dataset splits...")
     old_data = GraspDataset(x_filename="data/raw_data/base_unshuffled_original_data.npy",
@@ -82,14 +86,14 @@ if TUNING:
                                                          show=True)
 
     """test_tuned_model will return the predicted vs true labels for use in confusion matrix plotting"""
-    true_labels, pred_labels, grasp_true, grasp_pred = test_tuned_model(model, n_epochs, batch_size, classes, criterion,
-                                                                        old_data=(old_train_data, old_valid_data, old_test_data),
-                                                                        new_data=(new_train_data, new_valid_data, new_test_data))
+    grasp_pred_labels = test_tuned_model(model, n_epochs, batch_size, classes, criterion,
+                                         old_data=(old_train_data, old_valid_data, old_test_data),
+                                         new_data=(new_train_data, new_valid_data, new_test_data))
     model_file = f'{MODEL_SAVE_FOLDER}{model_name}_labels'
 
-    online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion,
-                              old_data=(old_train_data, old_valid_data, old_test_data),
-                              new_data=(new_train_data, new_valid_data, new_test_data))
+    # online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion,
+    #                           old_data=(old_train_data, old_valid_data, old_test_data),
+    #                           new_data=(new_train_data, new_valid_data, new_test_data))
     # df = pd.DataFrame(columns=["True Values", "Pred Values"])
     # df["True Values"], df["Pred Values"] = true_labels, pred_labels
     # plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)

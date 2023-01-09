@@ -1,5 +1,5 @@
-train_loss,0.19157353
-valid_loss,0.050296444
-train_acc,0.9106249999999999
-valid_acc,0.9785714285714286
-epoch,236
+train_loss,0.24175523
+valid_loss,0.049617868
+train_acc,0.9085416666666667
+valid_acc,0.9928571428571429
+epoch,196

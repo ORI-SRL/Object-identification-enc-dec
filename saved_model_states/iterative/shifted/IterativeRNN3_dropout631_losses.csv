@@ -1,0 +1,5 @@
+train_loss,0.028491072
+valid_loss,0.01688081
+train_acc,0.9733333333333332
+valid_acc,1.0
+epoch,125

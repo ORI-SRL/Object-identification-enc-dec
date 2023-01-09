@@ -119,6 +119,70 @@ class IterativeRNN2(nn.Module):  # this takes in the previous prediction to info
         return output  # , pred_back, saliency
 
 
+class IterativeRNN3(nn.Module):  # this takes in the previous prediction to inform the next layer
+
+    def __init__(self):
+        super(IterativeRNN3, self).__init__()
+
+        self.lin1 = nn.Linear(26, 64)  # best params found at 128, 200, 64 neurons
+        self.lin2 = nn.Linear(64, 64)
+        self.linOut = nn.Linear(64, 7)
+        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
+        self.drop = nn.Dropout(0.15)
+
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x, pred_in):
+        x = torch.cat((x, pred_in), -1)
+        x = self.lin1(x)
+        x = self.relu(x)
+        x = self.drop(x)
+        x = self.lin2(x)
+        x = self.relu(x)
+        x = self.drop(x)
+        output = self.linOut(x)
+
+        return output  # , pred_back, saliency
+
+
+class IterativeRNN4(nn.Module):  # this takes in the previous prediction to inform the next layer
+
+    def __init__(self):
+        super(IterativeRNN4, self).__init__()
+
+        self.lin1 = nn.Linear(19, 64)  # best params found at 128, 200, 64 neurons
+        # self.lin2 = nn.Linear(263, 7)  # best params found at 128, 200, 64 neurons
+        self.cnn1_block = nn.Sequential(
+                              nn.Conv2d(1, 32, (3, 3)),
+                              nn.BatchNorm2d(32),
+                              nn.ReLU(),
+                              nn.Dropout(p=.1),
+                              nn.Conv2d(32, 16, (3, 3)),
+                              nn.BatchNorm2d(16),
+                              nn.Dropout(p=.1),
+                              nn.ReLU())
+        self.lin2 = nn.Linear(263, 32)
+        self.linOut = nn.Linear(32, 7)
+        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
+        self.drop = nn.Dropout(0.15)
+
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x, pred_in):
+        x = self.lin1(x)
+        x = x.reshape(-1, 1, 8, 8)
+        x_aug = self.cnn1_block(x)
+        x = torch.cat((x_aug.view(x.shape[0], -1), pred_in), -1)
+        x = self.lin2(x)
+        x = self.relu(x)
+        x = self.drop(x)
+        output = self.linOut(x)
+
+        return output  # , pred_back, saliency
+
+
 class IterativeCNN(nn.Module):
 
     def __init__(self):

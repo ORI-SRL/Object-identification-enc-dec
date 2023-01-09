@@ -196,8 +196,12 @@ class GraspDataset(Dataset):
 
         return train_dataset, valid_dataset, test_dataset
 
-    def decode_labels(self, clss):
+    def get_labels(self, clss):
         labels = []
+
+        if isinstance(clss, torch.Tensor):
+            clss = clss.cpu().numpy()
+
         for cls in clss:
             labels.append(self.cls_to_label[cls])
         return labels

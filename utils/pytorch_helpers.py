@@ -109,6 +109,9 @@ def plot_model(best_loss, train_loss, valid_loss, train_acc, train_val, type):
     ax2.set_ylabel('Accuracy (%)')
     ax2.legend()
     fig.set_size_inches(12, 4.8)  # size in pixels
+    plt.show()
+
+    return fig
 
 
 def early_stopping(loss_dict, patience, max_patience, valid_loss, train_loss, train_acc, valid_acc, epoch, model,
