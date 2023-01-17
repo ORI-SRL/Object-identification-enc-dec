@@ -94,8 +94,8 @@ def plot_model(best_loss, train_loss, valid_loss, train_acc, train_val, type):
     ax1.set_ylabel('Loss')
     ax1.legend()
 
-    train_acc = np.array(train_acc)*100
-    train_val = np.array(train_val)*100
+    train_acc = np.array(train_acc) * 100
+    train_val = np.array(train_val) * 100
 
     sm_train_acc = pd.DataFrame(train_acc).ewm(com=smoothing_level).mean()
     p = ax2.plot(train_acc, alpha=.2)
@@ -158,7 +158,7 @@ def model_init(model, n_grasps=None):
                       'valid_acc': None, 'epoch': None}
     best_params = None
     return model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
-           best_params
+        best_params
 
 
 def get_nth_key(dictionary, n=0):
@@ -168,6 +168,47 @@ def get_nth_key(dictionary, n=0):
         if i == n:
             return key
     raise IndexError("dictionary index out of range")
+
+
+def salience_calc(frame, hidden, frame_dict, hidden_dict, nest_frame_dict, nest_hid_dict,
+                  enc_lab, i, sal_count):
+
+    frame_sal, _ = torch.max(frame.grad.data.abs(), dim=1)
+    frame_sal = frame_sal.detach().cpu().numpy()
+    hidden_sal, _ = torch.max(hidden.grad.data.abs(), dim=1)
+    hidden_sal = hidden_sal.detach().cpu().numpy()
+    for i_elem, _ in enumerate(frame_sal):
+        # record general saliencies
+        # frame salience
+        frame_sal = populate_sal_dicts(frame_dict, frame_sal, enc_lab, i_elem)
+        hidden_sal = populate_sal_dicts(hidden_dict, hidden_sal, enc_lab, i_elem)
+
+        # nested dict for the grasps within the objects
+        if enc_lab[i_elem].item() in nest_frame_dict:
+            if i in nest_frame_dict[enc_lab[i_elem].item()]:
+                nest_frame_dict[enc_lab[i_elem].item()][i].append(frame_sal[i_elem])
+            else:
+                nest_frame_dict[enc_lab[i_elem].item()][i] = [frame_sal[i_elem]]
+        else:
+            nest_frame_dict[enc_lab[i_elem].item()] = {}
+            nest_frame_dict[enc_lab[i_elem].item()][i] = [frame_sal[i_elem]]
+        if enc_lab[i_elem].item() in nest_hid_dict:
+            if i in nest_hid_dict[enc_lab[i_elem].item()]:
+                nest_hid_dict[enc_lab[i_elem].item()][i].append(hidden_sal[i_elem])
+            else:
+                nest_hid_dict[enc_lab[i_elem].item()][i] = [hidden_sal[i_elem]]
+        else:
+            nest_hid_dict[enc_lab[i_elem].item()] = {}
+            nest_hid_dict[enc_lab[i_elem].item()][i] = [hidden_sal[i_elem]]
+
+    #  tod: get the grasp saliencies to see how they vary through the iterations
+
+    # for i_elem, _ in enumerate(hidden):
+    #     hidden_dict[enc_lab[i_elem].item(), i] += hidden_sal[i_elem]
+    #     frame_dict[enc_lab[i_elem].item(), i] += frame_sal[i_elem]
+    #     sal_count[enc_lab[i_elem].item(), i] += 1
+
+    return frame_dict, hidden_dict, nest_frame_dict, nest_hid_dict, sal_count
 
 
 def salience_std(sal):
@@ -211,7 +252,7 @@ def populate_sal_dicts(sal_dict, sal_vals, obj_labels, idx):
 def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, batch_size, n_epochs=50,
               max_patience=25, save_folder='./', save=True, show=True):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
-    best_params = model_init(model)
+        best_params = model_init(model)
     hidden_size = 7
 
     for epoch in range(1, n_epochs + 1):
@@ -375,7 +416,7 @@ def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, b
 def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, classes, n_epochs=50,
                      max_patience=10, save_folder='./', save=True, show=True):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
-    best_params = model_init(model)
+        best_params = model_init(model)
 
     try:
         for epoch in range(1, n_epochs + 1):
@@ -492,7 +533,7 @@ def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, cla
 
 def test_iter_model(model, test_loader, classes, criterion):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
-    best_params = model_init(model)
+        best_params = model_init(model)
 
     # Epochs
     test_loss = 0.0
@@ -559,11 +600,12 @@ def test_iter_model(model, test_loader, classes, criterion):
 
                     # sm_out = sm(output)
                     score_max_index = output.argmax(1)  # class output across batches (dim=batch size)
-                    score_max = output[range(output.shape[0]),
-                                       score_max_index.data].mean()  # make sure this vector is dim=batch size, AND NOT A MATRIX
+                    score_max = output[range(output.shape[0]), score_max_index.data].mean()
+                    # make sure this vector is dim=batch size, AND NOT A MATRIX
                     score_max.backward()
 
-                    # frm_saliency = torch.mean(frm.grad.data.abs(), dim=1).detach().cpu().numpy()  # dim=batch size vectors
+                    # frm_saliency = torch.mean(frm.grad.data.abs(), dim=1).detach().cpu().numpy()
+                    # dim=batch size vectors
                     frm_saliency, _ = torch.max(frm.grad.data.abs(), dim=1)
                     frm_saliency = frm_saliency.detach().cpu().numpy()  # variant n.1
                     # frm_saliency = frm.grad.data.var()  #  variant n.2
@@ -681,7 +723,7 @@ def test_iter_model(model, test_loader, classes, criterion):
 def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
                 save_folder='./', save=True, show=True):
     model_name, device, train_loss_out, test_loss_out, train_sil_out, test_sil_out, patience, best_loss_dict, \
-    best_params = model_init(model, n_grasps)
+        best_params = model_init(model, n_grasps)
 
     best_loss = None
     best_params = None
