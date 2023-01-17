@@ -125,7 +125,7 @@ def present_grasp_result(probabilities, classes, fig, left_text, right_text):
 
 
 def online_loop(model, save_folder, norm_vals, classes):
-    data_arduino = serial.Serial(port='COM13', baudrate=9600, timeout=.1)
+    data_arduino = "" # serial.Serial(port='COM13', baudrate=9600, timeout=.1)
     # valve_arduino = serial.Serial(port='COM4', baudrate=9600, timeout=.1)
     data_stack = []
 
