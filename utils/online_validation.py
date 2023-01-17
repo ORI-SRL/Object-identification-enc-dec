@@ -413,7 +413,12 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
             X_old, y_old, _ = old_train_data[old_train_indices[batch_start:batch_end]]
             X_new, y_new, _ = new_train_data[new_train_indices[batch_start:batch_end]]
 
+            # concatenate the new and old data then add noise to prevent overfitting
             X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+            noise = torch.normal(0, 0.2, X_cat.shape)
+            X_cat += noise
+            X_cat[X_cat < 1] = 0
+
             y_cat = torch.cat([y_old, y_new], dim=0).to(device)
             batch_ints = list(range(len(y_cat)))
             random.shuffle(batch_ints)
@@ -471,6 +476,9 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
             X_new, y_new, _ = new_valid_data[new_valid_indices[batch_start:batch_end]]
 
             X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+            noise = torch.normal(0, 0.2, X_cat.shape)
+            X_cat += noise
+            X_cat[X_cat < 1] = 0
             y_cat = torch.cat([y_old, y_new], dim=0).to(device)
             batch_ints = list(range(len(y_cat)))
             random.shuffle(batch_ints)
@@ -592,6 +600,9 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
         X_new, y_new, y_labels_new = new_test_data[new_test_indices[batch_start:batch_end]]
 
         X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+        noise = torch.normal(0, 0.2, X.shape)
+        X += noise
+        X[X < 1] = 0
         y = torch.cat([y_old, y_new], dim=0).to(device)
         y_labels = np.concatenate([y_labels_old, y_labels_new])
 
@@ -604,13 +615,15 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
             # randomly switch in zero rows to vary the number of grasps being identified
             padded_start = padded_ints[k]  # np.random.randint(1, 11)
             X_pad = X[:, :padded_start + 1, :]
-
+            frm = X_pad[:, 0, :]
+            frm.requires_grad_()
             # set hidden layer
             hidden = torch.full((X_pad.size(0), hidden_size), 1 / 7).to(device)
 
             """ iterate through each grasp and run the model """
-            output = model(X_pad[:, 0, :], hidden)
+            output = model(frm, hidden)
             hidden = output
+
             for j in range(1, padded_start + 1):
                 output = model(X_pad[:, j, :], hidden)
                 hidden = output
