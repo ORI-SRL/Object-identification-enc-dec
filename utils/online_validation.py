@@ -142,7 +142,7 @@ def online_loop(model, save_folder, norm_vals, classes):
     # fig, ax = plt.subplots()
     probs = torch.zeros(7)
     identifying = True
-    fig, left_text, right_text = setup_gui(classes, arduino=None)
+    fig, left_text, right_text = setup_gui(classes)
 
     while identifying:
         grasp_init = input("Take grasp? Y or N")  # "y"
