@@ -181,7 +181,7 @@ def online_loop(model, save_folder, norm_vals, classes):
 
 
 def gather_grasps(data_folder, classes, norm_vals):
-    data_arduino = serial.Serial(port='COM13', baudrate=9600, timeout=.1)
+    data_arduino = "" # serial.Serial(port='COM13', baudrate=9600, timeout=.1)
     # valve_arduino = serial.Serial(port='COM4', baudrate=9600, timeout=.1)
     save_folder = f"{data_folder}val_test_grasps"
     data_stack = []
