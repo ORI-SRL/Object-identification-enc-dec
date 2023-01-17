@@ -15,13 +15,13 @@ spon_dev = std([3.9, 0.0, 7.8, 0.0, 2.6, 0.0]);
 
 %accuracies over time
 time_acc = [];
-time_acc(1,:) = [0 71.1 83.0    89.6    93.4    95.9    97.0    97.2    98.3   100    100];  %app_acc
-time_acc(2,:) = [0 68.9 93.0    98.5    98.9    99.1    100.    100.    99.5   100    100];  %boot_acc 
-time_acc(3,:) = [0 59.1 73.9    87.9    92.2    93.2    97.9    93.7    97.2   98.2   95.6]; %card_acc 
-time_acc(4,:) = [0 69.9 77.1    82.0    89.4    88.1    88.5    97.2    94.2   93.8   96.0]; %cube_acc 
-time_acc(5,:) = [0 83.6 93.4    96.2    97.8    96.4    96.7    98.7    98.4   97.9   98.5];  %cup_acc 
-time_acc(6,:) = [0 79.5 94.0    94.2    97.7    99.1    100.    99.3    99.4   100    100];  %cyl_acc 
-time_acc(7,:) = [0 68.8 82.9    95.2    96.4    99.2    99.3    98.7    99.7   98.0   100];  %spon_acc 
+time_acc(1,:) = [0 100  83.3    100.    100.    100.    100.    100.    100.   100.   100];  %app_acc
+time_acc(2,:) = [0 91.7 83.3    100.    100.    100.    100.    100.    100.   100.   100];  %boot_acc 
+time_acc(3,:) = [0 66.7 100.    100.    100.    100.    100.    100.    100.   100.   100]; %card_acc 
+time_acc(4,:) = [0 100. 100.    100.    100.    100.    100.    100.    100.   100.   100]; %cube_acc 
+time_acc(5,:) = [0 91.7 100.    100.    100.    100.    100.    100.    100.   100.   100];  %cup_acc 
+time_acc(6,:) = [0 83.3 91.7    100.    100.    100.    100.    100.    100.   100.   100];  %cyl_acc 
+time_acc(7,:) = [0 100. 83.3    100.    100.    100.    100.    100.    100.   100.   100];  %spon_acc 
 t_acc_mean = mean(time_acc,1);
 err = [app_dev, bott_dev, card_dev, cube_dev, cup_dev, cyl_dev, spon_dev];
 
@@ -58,6 +58,7 @@ ax = gca;
 ax.XLabel.String = 'Objects'; ax.YLabel.String = 'Classification Accuracy / %';
 ax.XLabel.FontSize = 16; ax.YLabel.FontSize = 16;
 ax.XAxis.FontSize = 12; ax.YAxis.FontSize = 12;
+ax.YLim = [0,103];
 figure
 m = bar(Objects, max(time_acc, [], 2)); 
 
@@ -68,7 +69,7 @@ for r = 1:size(time_acc,1)
 end
 plot(0:10, t_acc_mean, 'LineWidth',2)
 ax = gca;
-ax.YLim = [0,101];
+ax.YLim = [0,103];
 ax.XLabel.String = 'Number of grasps';
 ax.YLabel.String = 'Classification Accuracy / %';
 legend(Objects)
