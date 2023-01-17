@@ -568,6 +568,15 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     grasp_accuracy = np.zeros((10, 2)).astype(float)  # setup for accuracy at each grasp number
     grasp_accuracy[:, 0] = np.linspace(1, 10, 10)
 
+    """Setup saliency analysis"""
+    saliencies_hidden = {}
+    saliencies_frm = {}
+    grasp_sal_hid_dd = {}
+    grasp_sal_frm_dd = {}
+    grasp_sal_hid = torch.zeros((7, 10))
+    grasp_sal_frm = torch.zeros((7, 10))
+    grasp_sal_count = torch.zeros((7, 10))
+
     """Extract data"""
     _, _, old_test_data = old_data
     _, _, new_test_data = new_data
@@ -619,17 +628,30 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
             frm.requires_grad_()
             # set hidden layer
             hidden = torch.full((X_pad.size(0), hidden_size), 1 / 7).to(device)
+            hidden.requires_grad_()
 
             """ iterate through each grasp and run the model """
             output = model(frm, hidden)
             hidden = output
 
             for j in range(1, padded_start + 1):
-                output = model(X_pad[:, j, :], hidden)
+                frm = X_pad[:, j, :]
+                frm.requires_grad_()
+                hidden.requires_grad_()
+                output = model(frm, hidden)
                 hidden = output
+
+                # saliencies_frm, saliencies_hidden, grasp_sal_frm_dd, grasp_sal_hid_dd, grasp_sal_count =
+                # salience_calc( X_pad[:, j, :], hidden, saliencies_frm, saliencies_hidden, grasp_sal_frm_dd,
+                # grasp_sal_hid_dd, y, j, grasp_sal_count)
 
             loss2 = criterion(output, y.squeeze())
             test_loss += loss2.item()
+
+            loss2.backward()
+            # saliencies_frm, saliencies_hidden, grasp_sal_frm_dd, grasp_sal_hid_dd, grasp_sal_count = salience_calc(
+            #     frm, hidden, saliencies_frm, saliencies_hidden, grasp_sal_frm_dd, grasp_sal_hid_dd,
+            #     y, j, grasp_sal_count)
 
             # calculate accuracy of classification
             _, preds = output.detach().max(dim=1)
