@@ -126,7 +126,7 @@ def early_stopping(loss_dict, patience, max_patience, valid_loss, train_loss, tr
         best_params = copy.copy(model.state_dict())
     else:
         patience += 1
-    if patience == max_patience:
+    if patience == max_patience-1:
         print(f'Early stopping: training terminated at epoch {epoch} due to es, '
               f'patience exceeded at {max_patience}')
         print(f'Best accuracies: Training: {loss_dict["train_acc"]} \t Testing: {loss_dict["test_acc"]}')
