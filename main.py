@@ -74,16 +74,16 @@ if TUNING:
         model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_dropout_model_state.pt'
         if exists(model_state):
             model.load_state_dict(torch.load(model_state))
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.CrossEntropyLoss()
     # model, batch_params, batch_losses = tune_RNN_network(model, optimizer, criterion, batch_size,
     #                                                      n_epochs=n_epochs,
     #                                                      old_data=(old_train_data, old_valid_data, old_test_data),
     #                                                      new_data=(new_train_data, new_valid_data, new_test_data),
-    #                                                      max_patience=75,
+    #                                                      max_patience=50,
     #                                                      save_folder=MODEL_SAVE_FOLDER,
     #                                                      save=False,
-    #                                                      show=True)
+    #                                                      show=False)
 
     """test_tuned_model will return the predicted vs true labels for use in confusion matrix plotting"""
     grasp_pred_labels = test_tuned_model(model, n_epochs, batch_size, classes, criterion,
