@@ -444,10 +444,10 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
 
                 optimizer.zero_grad()
                 """ iterate through each grasp and run the model """
-                output = model(X_pad[:, 0, :], hidden)
+                output, embedding = model(X_pad[:, 0, :], hidden)
                 hidden = output
-                for j in range(1, padded_start+1):
-                    output = model(X_pad[:, j, :], hidden)
+                for j in range(1, padded_start + 1):
+                    output, embedding = model(X_pad[:, j, :], hidden)
                     hidden = output
 
                 frame_loss = criterion(output, y.squeeze())
@@ -500,11 +500,11 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
                 # set the first hidden layer as a vanilla prediction or zeros
                 hidden = torch.zeros(X_pad.size(0), hidden_size).to(device)
 
-                output = model(X_pad[:, 0, :].float(), hidden)
+                output, embedding = model(X_pad[:, 0, :].float(), hidden)
                 hidden = output
                 """ Run the model through each grasp """
-                for j in range(1, padded_start+1):
-                    output = model(X_pad[:, j, :].float(), hidden)
+                for j in range(1, padded_start + 1):
+                    output, embedding = model(X_pad[:, j, :].float(), hidden)
                     hidden = copy.copy(output)
                 valid_loss += criterion(output, y.squeeze())
 
@@ -559,7 +559,6 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
 
 def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=None, new_data=None,
                      show_confusion=True):
-
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
 
@@ -571,9 +570,6 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     hidden_size = 7
     n_grasps = 10
 
-    grasp_accuracy = np.zeros((10, 2)).astype(float)  # setup for accuracy at each grasp number
-    grasp_accuracy[:, 0] = np.linspace(1, 10, 10)
-
     """Setup saliency analysis"""
     saliencies_hidden = {}
     saliencies_frm = {}
@@ -583,19 +579,21 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     grasp_sal_frm = torch.zeros((7, 10))
     grasp_sal_count = torch.zeros((7, 10))
 
+    """Setup 2D embedding extraction"""
+    obj_embed = torch.zeros((7, 8, 8)).to(device)
+    obj_nums = torch.zeros(7).to(device)
     """Extract data"""
     _, _, old_test_data = old_data
     _, _, new_test_data = old_data
 
     """Calculate how many batches there are"""
-
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
     half_batch = batch_size / 2
 
     test_batch_reminder = len(new_test_data) % half_batch
 
     n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
-        len(new_test_data) / half_batch) + 1
+        len(new_test_data) / half_batch)
 
     old_test_indices = list(range(len(old_test_data)))
     new_test_indices = list(range(len(new_test_data)))
@@ -604,6 +602,13 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     random.shuffle(old_test_indices)
     random.shuffle(new_test_indices)
 
+    # get the accuracies for different number of sensors being knocked out
+    g_acc_list = []
+
+    # for sensors in range(10):
+    #     for ko in range(20):
+    grasp_accuracy = np.zeros((10, 2)).astype(float)  # setup for accuracy at each grasp number
+    grasp_accuracy[:, 0] = np.linspace(1, 10, 10)
     for i in range(n_test_batches):
 
         # Take each testing batch and process
@@ -631,6 +636,8 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
             # randomly switch in zero rows to vary the number of grasps being identified
             padded_start = padded_ints[k]  # np.random.randint(1, 11)
             X_pad = X[:, :padded_start + 1, :]
+            # knock_out_sensors = random.sample(range(19), k=sensors)
+            # X_pad[:, :, knock_out_sensors] = 0
             frm = X_pad[:, 0, :]
             frm.requires_grad_()
             # set hidden layer
@@ -638,14 +645,14 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
             hidden.requires_grad_()
 
             """ iterate through each grasp and run the model """
-            output = model(frm, hidden)
+            output, embedding = model(frm, hidden)
             hidden = output
 
             for j in range(1, padded_start + 1):
                 frm = X_pad[:, j, :]
                 frm.requires_grad_()
                 hidden.requires_grad_()
-                output = model(frm, hidden)
+                output, embedding = model(frm, hidden)
                 hidden = output
 
                 # saliencies_frm, saliencies_hidden, grasp_sal_frm_dd, grasp_sal_hid_dd, grasp_sal_count =
@@ -667,6 +674,10 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
             test_accuracy += frame_accuracy
             grasp_accuracy[padded_start, 1] += frame_accuracy
 
+            # Add the output from the embedding
+            obj_embed[y.flatten(), :, :] += embedding.reshape((-1, 8, 8))
+            for ob in y.flatten().tolist():
+                obj_nums[ob] += 1
             # add the prediction and true to the grasp_labels dict
             pred_labels_tmp = old_test_data.get_labels(preds.cpu().numpy())
             pred_labels.extend(pred_labels_tmp)
@@ -678,21 +689,52 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     test_acc_out.append(test_accuracy)
 
     grasp_accuracy[:, 1] = grasp_accuracy[:, 1] / n_test_batches
-    print(f'Grasp accuracy: {grasp_accuracy}')
+    # print(f'Grasp accuracy: {grasp_accuracy}')
+    g_acc = np.mean(grasp_accuracy[:, 1])
+    # g_acc_list.append(g_acc)
+    # print(f'{ko} sensor: {g_acc}')
+    #     g_acc_mean = np.mean(g_acc_list)
+    #     print(f'{sensors} sensors: {g_acc_mean}')
+    #     g_acc_list = []
+    print(f'Test acc = {g_acc}')
 
+    """ take average of the embeddings """
+
+    obj_embed_avg = [obj_embed[ob, :, :] / obj_nums[ob] for ob in range(obj_nums.__len__())]
+    maxAbsE, minAbsE = torch.tensor(0.0), torch.tensor(0.0)
+    for m in obj_embed_avg:
+        maxE = torch.max(m)
+        minE = torch.min(m)
+        maxAbsE = torch.max(maxE, maxAbsE)
+        minAbsE = torch.min(minE, minAbsE)
+
+    # obj_embed_avg = [(em - minAbsE) / (maxAbsE - minAbsE) for em in obj_embed_avg]
+
+    fig = plt.figure()
+    gs = GridSpec(2, 72, figure=fig)
+    ax = [fig.add_subplot(gs[0, 0:17]), fig.add_subplot(gs[0, 18:35]), fig.add_subplot(gs[0, 36:53]),
+          fig.add_subplot(gs[0, 54:71]), fig.add_subplot(gs[1, 9:26]), fig.add_subplot(gs[1, 27:44]),
+          fig.add_subplot(gs[1, 45:63])]
+    for n, ob in enumerate(obj_embed_avg):
+        # fig, ax = plt.subplots(figsize=(7, 6))
+        # cbar_ax = fig.add_axes([.895, 0.125, .05, 0.755])
+        axes = sns.heatmap(ob.cpu().detach().numpy(), linewidths=.4, cmap=cm.magma, cbar_kws={'label': 'label'},
+                           ax=ax[n], square=True, cbar=False)  # cbar_ax=cbar_ax,  center=0.5,
+        ax[n].set_xlabel(classes[n])
+    plt.show()
     if show_confusion:
         for grasp_no in range(n_grasps):
             unique_labels = new_test_data.labels
-            cm = confusion_matrix(true_labels, grasp_pred_labels[str(grasp_no+1)], labels=unique_labels)
-            # cm_display = ConfusionMatrixDisplay(cm, display_labels=unique_labels).plot()
-            cm = cm.astype('float64')
+            conf_m = confusion_matrix(true_labels, grasp_pred_labels[str(grasp_no + 1)], labels=unique_labels)
+            # cm_display = ConfusionMatrixDisplay(conf_m, display_labels=unique_labels).plot()
+            conf_m = conf_m.astype('float64')
             for row in range(len(unique_labels)):
-                cm[row, :] = cm[row, :] / cm[row, :].sum()
+                conf_m[row, :] = conf_m[row, :] / conf_m[row, :].sum()
             fig = plt.figure()
-            plt.title(f'{grasp_no+1} grasps - {model.__class__.__name__}')
+            plt.title(f'{grasp_no + 1} grasps - {model.__class__.__name__}')
             fig.set_size_inches(8, 5)
             sns.set(font_scale=1.2)
-            cm_display_percentages = sns.heatmap(cm, annot=True, fmt='.1%', cmap='Blues',
+            cm_display_percentages = sns.heatmap(conf_m, annot=True, fmt='.1%', cmap='Blues',
                                                  xticklabels=unique_labels,
                                                  yticklabels=unique_labels, vmin=0, vmax=1).plot()
 
