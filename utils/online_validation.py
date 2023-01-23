@@ -703,7 +703,6 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
 
 def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, old_data=None, new_data=None):
 
-    """unfinished but nearly ready for plot adding"""
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
     test_accuracy = 0
@@ -736,65 +735,81 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     random.shuffle(old_test_indices)
     random.shuffle(new_test_indices)
 
-    for i in range(n_test_batches):
-        batch_start = i * batch_size
-        batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(new_test_data) else len(
-            new_test_data)
+    for x in range(5):
+        for i in range(n_test_batches):
+            batch_start = i * batch_size
+            batch_end = i * batch_size + batch_size \
+                if i * batch_size + batch_size < len(new_test_data) \
+                else len(new_test_data)
 
-        X_old, y_old, y_labels_old = old_test_data[old_test_indices[batch_start:batch_end]]
-        X_new, y_new, y_labels_new = new_test_data[new_test_indices[batch_start:batch_end]]
+            X_old, y_old, y_labels_old = old_test_data[old_test_indices[batch_start:batch_end]]
+            X_new, y_new, y_labels_new = new_test_data[new_test_indices[batch_start:batch_end]]
 
-        X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
-        y = torch.cat([y_old, y_new], dim=0).to(device)
-        y_labels = np.concatenate([y_labels_old, y_labels_new])
+            X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+            noise = torch.normal(0, 0.2, X.shape)
+            X += noise
+            X[X < 1] = 0
+            y = torch.cat([y_old, y_new], dim=0).to(device)
+            y_labels = np.concatenate([y_labels_old, y_labels_new])
 
-        # enc_lab = encode_labels(y_labels, classes).to(device)  # .softmax(dim=-1)
-        # set the initial guess as a flat probability for each object
-        pred_in = torch.full((X.size(0), 7), 1 / 7).to(device)
+            for r in range(X.size(0)):
+                X_frame = X[r, :, :].reshape((1, 10, -1))
+                true_labels.extend(y_labels.squeeze().tolist())
 
-        # run the model and calculate loss
-        hidden = torch.full((X.size(0), hidden_size), 1 / 7).to(device)
+                # run the model and calculate loss
+                hidden = torch.full((X_frame.size(0), hidden_size), 1 / 7).to(device)
 
-        grasps_taken = 0
+                grasps_taken = 0
 
-        for j in range(X.size(1)):
-            output = model(X[:, j, :], hidden)
-            probs_out = sm(output)
-            score_max_index = probs_out.argmax(1)  # class output across batches (dim=batch size)
-            score_max = probs_out.max(dim=1)
+                for j in range(X.size(1)):
+                    output, _ = model(X_frame[:, j:j + 1, :], hidden)
+                    probs_out = sm(output)
+                    # score_max_index = probs_out.argmax(1)  # class output across batches (dim=batch size)
+                    score_max, score_max_index = probs_out.max(dim=1)
 
-            hidden = copy.copy(output)
-            output.detach()
-            confs[y.flatten(), grasps_taken] += score_max.values
-            conf_sums[y.flatten(), grasps_taken] += 1
+                    hidden = output
+                    confs[y[r], grasps_taken] += score_max
+                    conf_sums[y[r], grasps_taken] += 1
 
-            grasps_taken += 1
-            if score_max.values > 0.95:
-                break
+                    grasps_taken += 1
+                    if score_max > 0.98:
+                        break
 
-        last_frame = copy.copy(output)
+                last_frame = copy.copy(output)
 
-        # calculate accuracy of classification
-        _, inds = last_frame.max(dim=1)
-        frame_accuracy = torch.sum(inds == y.flatten()).cpu().numpy() / batch_size
-        test_accuracy += frame_accuracy
-        grasp_accuracy[grasps_taken - 1, 1] += 1
-        grasp_accuracy[grasps_taken - 1, 0] += frame_accuracy
+                # calculate accuracy of classification
+                _, inds = last_frame.max(dim=1)
+                frame_accuracy = 1 if inds == y[r] else 0
+                # frame_accuracy = torch.sum(inds == y.flatten()).cpu().numpy() / batch_size
+                test_accuracy += frame_accuracy
+                grasp_accuracy[grasps_taken - 1, 1] += 1
+                grasp_accuracy[grasps_taken - 1, 0] += frame_accuracy
 
-        # use indices of objects to form confusion matrix
-        # for n, _ in enumerate(enc_lab):
-        #     row = enc_lab[n]
-        #     col = inds[n]
-        #     confusion_ints[grasps_taken - 1, row, col] += 1
-        #     # add the prediction and true to the grasp_labels dict
-        #     grasp_num = get_nth_key(grasp_pred_labels, grasps_taken - 1)
-        #     grasp_true_labels[grasp_num].append(classes[row])
-        #     grasp_pred_labels[grasp_num].append(classes[col])
-        #
-        # pred_labels.extend(decode_labels(inds, classes))
-        # true_labels.extend(frame_labels)
-    confidences = confs / conf_sums
+            # use indices of objects to form confusion matrix
+            # for n, _ in enumerate(enc_lab):
+            #     row = enc_lab[n]
+            #     col = inds[n]
+            #     confusion_ints[grasps_taken - 1, row, col] += 1
+            #     # add the prediction and true to the grasp_labels dict
+            #     grasp_num = get_nth_key(grasp_pred_labels, grasps_taken - 1)
+            #     grasp_true_labels[grasp_num].append(classes[row])
+            #     grasp_pred_labels[grasp_num].append(classes[col])
+            #
+            # pred_labels.extend(decode_labels(inds, classes))
+            # true_labels.extend(frame_labels)
+    grasp_accuracy[:, 0] = grasp_accuracy[:, 0] / n_test_batches / 5
+    print(f'Grasp accuracy: {grasp_accuracy}')
+    # extract the confidences for each grasp number and object then ensure there are no nan values
+    confidences = (confs / conf_sums * 100).detach().numpy()
+    confidences[np.isnan(confidences)] = 100
     x = range(1, 11)
-    for row in enumerate(classes):
-        plt.plot(confidences[row, :], '-', label=f'{classes[row]}')
-        plt.show()
+    max_grasps = 5
+    fig, ax = plt.subplots(1, 1)
+    for row, class_name in enumerate(classes):
+        ax.plot(confidences[row, 0:max_grasps], '-', label=f'{class_name}')
+    plt.show()
+    plt.xticks(ticks=range(max_grasps), labels=[1, 2, 3, 4, 5])
+    ax.set_ylabel('Confidence / %')
+    ax.set_xlabel('Number of grasps')
+
+    ax.legend()
