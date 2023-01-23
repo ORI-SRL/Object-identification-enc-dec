@@ -167,6 +167,7 @@ class IterativeRNN4(nn.Module):  # this takes in the previous prediction to info
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
         self.drop = nn.Dropout(0.15)
+        self.sensdrop = nn.Dropout(18/19)
 
         self.softmax = nn.Softmax(dim=-1)
 
