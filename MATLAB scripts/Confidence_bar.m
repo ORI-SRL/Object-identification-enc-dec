@@ -28,7 +28,7 @@ err = [app_dev, bott_dev, card_dev, cube_dev, cup_dev, cyl_dev, spon_dev];
 obj_diffs = diff(time_acc, [], 2);
 grasp_diffs = mean(obj_diffs);
 
-discrete_idxs = (1:10)+1;
+discrete_idxs = (1:4)+1;
 for r = 1:size(time_acc,1)
     disc_bars(r,:) = [time_acc(r, discrete_idxs)];
 end
@@ -39,13 +39,28 @@ ax.XLabel.String = 'Classification deltas'; ax.YLabel.String = 'Percentage point
 ax.XLabel.FontSize = 16; ax.YLabel.FontSize = 16;
 ax.XAxis.FontSize = 12; ax.YAxis.FontSize = 12;
 %boxplot(time_acc(:,2:end)', Objects); ax = gca; ax.YLim = [0, 105];
+
+figure
+hold on
+for r = 1:size(time_acc,1)
+    plot(0:10,time_acc(r,:))
+end
+plot(0:10, t_acc_mean, 'LineWidth',2)
+ax = gca;
+ax.YLim = [0,103];
+ax.XLabel.String = 'Number of grasps';
+ax.YLabel.String = 'Classification Accuracy / %';
+legend(Objects)
+ax.Legend.Location = "southeast";
+childs = ax.Children;
+
 figure
 hold on
 for r = 1:size(disc_bars,1)
     b = bar(Objects(r), disc_bars(r,:)); %obj_diffs(r,2:end)); %err, 'vertical', 'b.'
     if r == 1
-        for c = 1:size(b(:),1)
-            Colour_pool(c,:) = get(b(c),'FaceColor');
+        for c = 1:size(childs,1)
+            Colour_pool(c,:) = childs(c).Color;
         end
     end
     for c = 1:size(b(:),1)
@@ -62,15 +77,3 @@ ax.YLim = [0,103];
 figure
 m = bar(Objects, max(time_acc, [], 2)); 
 
-figure
-hold on
-for r = 1:size(time_acc,1)
-    plot(0:10,time_acc(r,:))
-end
-plot(0:10, t_acc_mean, 'LineWidth',2)
-ax = gca;
-ax.YLim = [0,103];
-ax.XLabel.String = 'Number of grasps';
-ax.YLabel.String = 'Classification Accuracy / %';
-legend(Objects)
-ax.Legend.Location = "southeast";
