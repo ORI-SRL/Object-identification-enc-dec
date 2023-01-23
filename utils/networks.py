@@ -172,16 +172,17 @@ class IterativeRNN4(nn.Module):  # this takes in the previous prediction to info
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x, pred_in):
+        # x = self.sensdrop(x)
         x = self.lin1(x)
-        x = x.reshape(-1, 1, 8, 8)
-        x_aug = self.cnn1_block(x)
+        embed_layer = x.reshape(-1, 1, 8, 8)
+        x_aug = self.cnn1_block(embed_layer)
         x = torch.cat((x_aug.view(x.shape[0], -1), pred_in), -1)
         x = self.lin2(x)
         x = self.relu(x)
         x = self.drop(x)
         output = self.linOut(x)
 
-        return output  # , pred_back, saliency
+        return output, embed_layer  # , pred_back, saliency
 
 
 class IterativeCNN(nn.Module):
