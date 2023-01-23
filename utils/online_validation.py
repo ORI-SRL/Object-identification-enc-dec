@@ -8,12 +8,15 @@ import matplotlib.pyplot as plt
 import matplotlib.widgets as wgt
 import matplotlib.patches as mpatch
 from matplotlib.patches import FancyBboxPatch
+from matplotlib.gridspec import GridSpec
+from matplotlib import cm
 # import serial
 import time
 from utils.ml_classifiers import *
 from utils.pytorch_helpers import *
 import pickle
 import math
+
 
 # from utils.networks import IterativeRNN2
 
@@ -125,7 +128,7 @@ def present_grasp_result(probabilities, classes, fig, left_text, right_text):
 
 
 def online_loop(model, save_folder, norm_vals, classes):
-    data_arduino = "" # serial.Serial(port='COM13', baudrate=9600, timeout=.1)
+    data_arduino = ""  # serial.Serial(port='COM13', baudrate=9600, timeout=.1)
     # valve_arduino = serial.Serial(port='COM4', baudrate=9600, timeout=.1)
     data_stack = []
 
@@ -181,7 +184,7 @@ def online_loop(model, save_folder, norm_vals, classes):
 
 
 def gather_grasps(data_folder, classes, norm_vals):
-    data_arduino = "" # serial.Serial(port='COM13', baudrate=9600, timeout=.1)
+    data_arduino = ""  # serial.Serial(port='COM13', baudrate=9600, timeout=.1)
     # valve_arduino = serial.Serial(port='COM4', baudrate=9600, timeout=.1)
     save_folder = f"{data_folder}val_test_grasps"
     data_stack = []
@@ -366,7 +369,7 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
 
     """Convert data into tensors"""
     old_train_data, old_valid_data, _ = old_data
-    new_train_data, new_valid_data, _ = new_data
+    new_train_data, new_valid_data, _ = old_data
 
     """Calculate how many batches there are"""
 
@@ -379,7 +382,7 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
     n_train_batches = int(len(new_train_data) / half_batch) if train_batch_reminder == 0 else int(
         len(new_train_data) / half_batch) + 1
     n_valid_batches = int(len(new_valid_data) / half_batch) if valid_batch_reminder == 0 else int(
-        len(new_valid_data) / half_batch) + 1
+        len(new_valid_data) / half_batch)
 
     old_train_indices = list(range(len(old_train_data)))
     old_valid_indices = list(range(len(old_valid_data)))
@@ -434,7 +437,7 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
 
                 # randomly switch in zero rows to vary the number of grasps being identified
                 padded_start = padded_ints[k]  # np.random.randint(1, 11)
-                X_pad = X[:, :padded_start+1, :]
+                X_pad = X[:, :padded_start + 1, :]
 
                 # set hidden layer
                 hidden = torch.full((X_pad.size(0), hidden_size), 1 / 7).to(device)
@@ -520,8 +523,8 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
         # confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=1)
 
         print('Epoch: {} \tTraining Loss: {:.4f} \tValidation loss: {:.4f} \t Train accuracy {:.2f} '
-              '\t Validation accuracy {:.2f}'
-              .format(epoch, train_loss, valid_loss, train_accuracy, valid_accuracy))
+              '\t Validation accuracy {:.2f} \t Patience {:}'
+              .format(epoch, train_loss, valid_loss, train_accuracy, valid_accuracy, patience))
         # empty cache to prevent overusing the memory
         torch.cuda.empty_cache()
         # Early Stopping Logic
@@ -537,6 +540,9 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
             patience += 1
 
         if patience >= max_patience:
+            print(f'Early stopping: training terminated at epoch {epoch} due to es, '
+                  f'patience exceeded at {epoch - max_patience}')
+            print(f'Best accuracies: Training: {best_loss_dict["train_acc"]} \t Testing: {best_loss_dict["valid_acc"]}')
             break
 
     if save and best_params is not None:
@@ -579,7 +585,8 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
 
     """Extract data"""
     _, _, old_test_data = old_data
-    _, _, new_test_data = new_data
+    _, _, new_test_data = old_data
+
     """Calculate how many batches there are"""
 
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
@@ -609,7 +616,7 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
         X_new, y_new, y_labels_new = new_test_data[new_test_indices[batch_start:batch_end]]
 
         X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
-        noise = torch.normal(0, 0.2, X.shape)
+        noise = torch.normal(0, 0.2, X.shape).to(device)
         X += noise
         X[X < 1] = 0
         y = torch.cat([y_old, y_new], dim=0).to(device)
@@ -663,7 +670,7 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
             # add the prediction and true to the grasp_labels dict
             pred_labels_tmp = old_test_data.get_labels(preds.cpu().numpy())
             pred_labels.extend(pred_labels_tmp)
-            grasp_pred_labels[str(padded_start+1)].extend(pred_labels_tmp)
+            grasp_pred_labels[str(padded_start + 1)].extend(pred_labels_tmp)
 
     test_accuracy = test_accuracy / (n_epochs * n_grasps)
     test_loss = test_loss / (n_epochs * n_grasps)
@@ -702,8 +709,8 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     test_accuracy = 0
     grasp_accuracy = torch.zeros((10, 2)).to(device)
     confusion_ints = torch.zeros((10, 7, 7)).to(device)
-    confs = torch.zeros((10, 2)).to(device)
-    conf_sums = torch.zeros((10, 2)).to(device)
+    confs = torch.zeros((7, 10)).to(device)
+    conf_sums = torch.zeros((7, 10)).to(device)
     grasp_true_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
     grasp_pred_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
     true_labels = []
@@ -712,7 +719,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     sm = nn.Softmax(dim=1)
     """Extract data"""
     _, _, old_test_data = old_data
-    _, _, new_test_data = new_data
+    _, _, new_test_data = old_data
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
     half_batch = batch_size / 2
 
