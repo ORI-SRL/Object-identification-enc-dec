@@ -756,8 +756,8 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     return grasp_pred_labels
 
 
-def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, old_data=None, new_data=None):
-
+def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, old_data=None, new_data=None,
+                              oldnew=True):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
     test_accuracy = 0
@@ -765,6 +765,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     confusion_ints = torch.zeros((10, 7, 7)).to(device)
     confs = torch.zeros((7, 10)).to(device)
     conf_sums = torch.zeros((7, 10)).to(device)
+    conf_std = [[[] for temp in range(10)] for _ in classes]
     grasp_true_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
     grasp_pred_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
     true_labels = []
@@ -773,14 +774,18 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     sm = nn.Softmax(dim=1)
     """Extract data"""
     _, _, old_test_data = old_data
-    _, _, new_test_data = old_data
+    _, _, new_test_data = new_data
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
     half_batch = batch_size / 2
 
-    test_batch_reminder = len(new_test_data) % half_batch
+    test_batch_reminder = len(old_test_data) % half_batch
 
-    n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
-        len(new_test_data) / half_batch) + 1
+    if oldnew:
+        n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
+            len(new_test_data) / half_batch) + 1
+    else:
+        n_test_batches = int(len(old_test_data) / half_batch) if test_batch_reminder == 0 else int(
+            len(old_test_data) / half_batch) + 1
 
     old_test_indices = list(range(len(old_test_data)))
     new_test_indices = list(range(len(new_test_data)))
@@ -790,7 +795,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     random.shuffle(old_test_indices)
     random.shuffle(new_test_indices)
 
-    for x in range(5):
+    for x in range(10):
         for i in range(n_test_batches):
             batch_start = i * batch_size
             batch_end = i * batch_size + batch_size \
@@ -800,12 +805,13 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
             X_old, y_old, y_labels_old = old_test_data[old_test_indices[batch_start:batch_end]]
             X_new, y_new, y_labels_new = new_test_data[new_test_indices[batch_start:batch_end]]
 
-            X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+            X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) if oldnew else \
+                X_new.reshape(-1, 10, 19).to(device)
             noise = torch.normal(0, 0.2, X.shape)
-            X += noise
+            X += noise.to(device)
             X[X < 1] = 0
-            y = torch.cat([y_old, y_new], dim=0).to(device)
-            y_labels = np.concatenate([y_labels_old, y_labels_new])
+            y = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_new.to(device)
+            y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_labels_new
 
             for r in range(X.size(0)):
                 X_frame = X[r, :, :].reshape((1, 10, -1))
@@ -825,6 +831,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                     hidden = output
                     confs[y[r], grasps_taken] += score_max
                     conf_sums[y[r], grasps_taken] += 1
+                    conf_std[y[r]][grasps_taken].append(score_max)
 
                     grasps_taken += 1
                     if score_max > 0.98:
@@ -852,19 +859,48 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
             #
             # pred_labels.extend(decode_labels(inds, classes))
             # true_labels.extend(frame_labels)
-    grasp_accuracy[:, 0] = grasp_accuracy[:, 0] / n_test_batches / 5
+    grasp_accuracy[:, 0] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
     print(f'Grasp accuracy: {grasp_accuracy}')
-    # extract the confidences for each grasp number and object then ensure there are no nan values
-    confidences = (confs / conf_sums * 100).detach().numpy()
-    confidences[np.isnan(confidences)] = 100
-    x = range(1, 11)
-    max_grasps = 5
-    fig, ax = plt.subplots(1, 1)
-    for row, class_name in enumerate(classes):
-        ax.plot(confidences[row, 0:max_grasps], '-', label=f'{class_name}')
-    plt.show()
-    plt.xticks(ticks=range(max_grasps), labels=[1, 2, 3, 4, 5])
-    ax.set_ylabel('Confidence / %')
-    ax.set_xlabel('Number of grasps')
+    # extract the confidences for each grasp number and object then ensure there are no nan values and
+    # calculate the std values
+    confidences = (confs / conf_sums * 100).detach().cpu().numpy()
+    # confidences[np.isnan(confidences)] = 100
+    for obj_idx, obj in enumerate(conf_std):
+        for g_idx, g in enumerate(obj):
+            if g:
+                conf_std[obj_idx][g_idx] = torch.std(torch.stack(conf_std[obj_idx][g_idx]))
+            else:
+                break
+    std_list = [[] for ob in classes]
+    for ob, _ in enumerate(classes):
+        for g in range(10):
+            if torch.is_tensor(conf_std[ob][g]):
+                if torch.isnan(conf_std[ob][g]):
+                    std_list[ob].append(0)
+                else:
+                    std_list[ob].append(conf_std[ob][g].detach().cpu().numpy())
+            else:
+                break
 
-    ax.legend()
+    x = range(1, 11)
+    x_start = 0
+    x_bar_ticks = []
+    max_grasps = 5
+    fig_line, ax_line = plt.subplots(1, 1)
+    fig_bar, ax_bar = plt.subplots(1, 1)
+    for row, class_name in enumerate(classes):
+        y_plt = confidences[row, ~np.isnan(confidences[row, :])]
+        x_plt = [*range(len(y_plt))]
+        x_bar = [x_start + _ * 0.2 for _ in x_plt]
+        x_start = max(x_bar) + 0.4
+        x_bar_ticks.append((max(x_bar) + min(x_bar)) / 2)
+        # x_bar = [row + _ for _ in x_tix]
+        # ax.plot(x_plt, y_plt, '-', label=f'{class_name}')
+        ax_line.errorbar(x_plt, y_plt, yerr=std_list[row], label=f'{class_name}')
+        ax_bar.bar(x_bar, y_plt, width=0.15)
+    plt.show()
+    plt.xticks(ticks=x_bar_ticks, labels=classes)
+    ax_bar.set_ylabel('Confidence / %')
+    ax_bar.set_xlabel('Number of grasps')
+
+    ax_line.legend()
