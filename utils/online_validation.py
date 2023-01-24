@@ -1,16 +1,14 @@
 import copy
 import numpy as np
-# import os
+import pandas as pd
+from scipy import stats
 from os.path import exists
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 import matplotlib.widgets as wgt
-import matplotlib.patches as mpatch
-from matplotlib.patches import FancyBboxPatch
 from matplotlib.gridspec import GridSpec
 from matplotlib import cm
-# import serial
 import time
 from utils.ml_classifiers import *
 from utils.pytorch_helpers import *
@@ -376,8 +374,8 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
     half_batch = int(batch_size / 2)
 
-    train_batch_reminder = len(old_train_data) % half_batch
-    valid_batch_reminder = len(old_valid_data) % half_batch
+    train_batch_reminder = len(new_train_data) % half_batch if oldnew else len(old_train_data) % half_batch
+    valid_batch_reminder = len(new_valid_data) % half_batch if oldnew else len(old_valid_data) % half_batch
 
     if oldnew:
         n_train_batches = int(len(new_train_data) / half_batch) if train_batch_reminder == 0 else int(
@@ -598,7 +596,7 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
     half_batch = batch_size / 2
 
-    test_batch_reminder = len(old_test_data) % half_batch
+    test_batch_reminder = len(old_test_data) % half_batch if oldnew else len(new_test_data) % half_batch
 
     if oldnew:
         n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
@@ -766,26 +764,21 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     confs = torch.zeros((7, 10)).to(device)
     conf_sums = torch.zeros((7, 10)).to(device)
     conf_std = [[[] for temp in range(10)] for _ in classes]
-    grasp_true_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
-    grasp_pred_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
     true_labels = []
-    pred_labels = []
     hidden_size = 7
     sm = nn.Softmax(dim=1)
+    cyl_stack = np.zeros((0, 7))
+
     """Extract data"""
     _, _, old_test_data = old_data
     _, _, new_test_data = new_data
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
     half_batch = batch_size / 2
 
-    test_batch_reminder = len(old_test_data) % half_batch
+    test_batch_reminder = len(old_test_data) % half_batch if oldnew else len(new_test_data) % half_batch
 
-    if oldnew:
-        n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
-            len(new_test_data) / half_batch) + 1
-    else:
-        n_test_batches = int(len(old_test_data) / half_batch) if test_batch_reminder == 0 else int(
-            len(old_test_data) / half_batch) + 1
+    n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
+        len(new_test_data) / half_batch) + 1
 
     old_test_indices = list(range(len(old_test_data)))
     new_test_indices = list(range(len(new_test_data)))
@@ -807,13 +800,15 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
 
             X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) if oldnew else \
                 X_new.reshape(-1, 10, 19).to(device)
-            noise = torch.normal(0, 0.2, X.shape)
-            X += noise.to(device)
+            """Vary the noise to find a balance between perfect results and more realistic variation"""
+            noise = torch.normal(0, 0.25, X.shape).to(device) * X
+            X += noise
             X[X < 1] = 0
             y = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_new.to(device)
             y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_labels_new
 
             for r in range(X.size(0)):
+                cyl_stack = np.zeros((0, 7))
                 X_frame = X[r, :, :].reshape((1, 10, -1))
                 true_labels.extend(y_labels.squeeze().tolist())
 
@@ -833,8 +828,10 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                     conf_sums[y[r], grasps_taken] += 1
                     conf_std[y[r]][grasps_taken].append(score_max)
 
+                    if y[r] == 5:
+                        cyl_stack = np.append(cyl_stack, probs_out.detach().cpu().numpy() * 100, axis=0)
                     grasps_taken += 1
-                    if score_max > 0.98:
+                    if score_max > 0.99:
                         break
 
                 last_frame = copy.copy(output)
@@ -846,6 +843,40 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                 test_accuracy += frame_accuracy
                 grasp_accuracy[grasps_taken - 1, 1] += 1
                 grasp_accuracy[grasps_taken - 1, 0] += frame_accuracy
+
+                if y[r] == 5 and np.size(cyl_stack, 0) > 3:
+                    n_rows = np.size(cyl_stack, 0)
+                    # fig, axs = plt.subplots(n_rows, 1)
+                    fig, ax = plt.subplots(1, 1)
+                    y_shift = 0
+                    y_data = []
+                    for row in range(n_rows):
+                        cyl_list = []
+                        # cyl_stack[row, :] += y_shift
+                        for idx, ent in enumerate(cyl_stack[row, :]):
+                            temp_list = [idx] * int(np.ceil(ent))
+                            cyl_list.extend(temp_list)
+                        s = pd.Series(cyl_list)
+                        curve = s.plot.density(color='black')
+                        x_line = ax.get_lines()[row].get_xdata()
+                        res = []
+                        for idx in range(0, len(x_line)):
+                            if 0 < x_line[idx] < 6:
+                                res.append(idx)
+                        y_line = ax.get_lines()[row].get_ydata()[res] + y_shift
+                        y_data.append(y_line)
+                        y_shift = max(y_line)
+                    fig, ax = plt.subplots(1, 1)
+                    for line in y_data:
+                        xx = np.linspace(0, 6, len(line))
+                        ax.plot(xx, line)
+                    ax.set_xlim((-0.25, 6.25))
+                    plt.xticks(ticks=range(0, 7), labels=classes)
+                    ax.set_yticklabels([])
+                    ax.set_yticks([])
+                    fig.text(0.1, 0.5, 'Belief Distribution', va='center', rotation='vertical')
+                    fig.set_size_inches((10.5, 9))
+                    # plt.show()
 
             # use indices of objects to form confusion matrix
             # for n, _ in enumerate(enc_lab):
@@ -896,8 +927,9 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
         x_bar_ticks.append((max(x_bar) + min(x_bar)) / 2)
         # x_bar = [row + _ for _ in x_tix]
         # ax.plot(x_plt, y_plt, '-', label=f'{class_name}')
-        ax_line.errorbar(x_plt, y_plt, yerr=std_list[row], label=f'{class_name}')
-        ax_bar.bar(x_bar, y_plt, width=0.15)
+        ax_bar.plot(x_bar, y_plt, linewidth=4) if len(x_plt) > 1 else \
+            ax_bar.scatter(x_bar, y_plt, marker='x', linewidth=3)  # label=f'{class_name}'
+        ax_bar.bar(x_bar, y_plt, width=0.15, alpha=0.3)
     plt.show()
     plt.xticks(ticks=x_bar_ticks, labels=classes)
     ax_bar.set_ylabel('Confidence / %')
