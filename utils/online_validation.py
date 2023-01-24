@@ -724,14 +724,15 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     plt.rcParams.update({'font.size': 15})
     fig = plt.figure()
     gs = GridSpec(2, 72, figure=fig)
-    ax = [fig.add_subplot(gs[0, 0:17]), fig.add_subplot(gs[0, 18:35]), fig.add_subplot(gs[0, 36:53]),
-          fig.add_subplot(gs[0, 54:71]), fig.add_subplot(gs[1, 9:26]), fig.add_subplot(gs[1, 27:44]),
-          fig.add_subplot(gs[1, 45:63])]
+    ax = [fig.add_subplot(gs[0, 0:16]), fig.add_subplot(gs[0, 18:34]), fig.add_subplot(gs[0, 36:52]),
+          fig.add_subplot(gs[0, 54:70]), fig.add_subplot(gs[1, 9:25]), fig.add_subplot(gs[1, 27:43]),
+          fig.add_subplot(gs[1, 45:61])]
+    ylims = 0.4
     for n, ob in enumerate(obj_embed_avg):
         # fig, ax = plt.subplots(figsize=(7, 6))
         # cbar_ax = fig.add_axes([.895, 0.125, .05, 0.755])
         axes = sns.heatmap(ob.cpu().detach().numpy(), linewidths=.4, cmap=cm.magma, cbar_kws={'label': 'label'},
-                           ax=ax[n], square=True, cbar=False)  # cbar_ax=cbar_ax,  center=0.5,
+                           ax=ax[n], square=True, cbar=False, vmax=ylims, vmin=-ylims)  # cbar_ax=cbar_ax,  center=0.5,
         ax[n].set_xlabel(classes[n])
     plt.show()
     if show_confusion:
