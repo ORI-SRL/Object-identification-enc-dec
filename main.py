@@ -37,10 +37,12 @@ classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
 n_epochs = 1000
+plt.rcParams.update({'font.size': 15})
 
 TRAIN_MODEL = False
 TEST_MODEL = False
 USE_PREVIOUS = True
+JOINT_DATA = True
 COMPARE_LOSSES = True
 ITERATIVE = True
 RNN = True
@@ -74,7 +76,7 @@ if TUNING:
         model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_dropout_model_state.pt'
         if exists(model_state):
             model.load_state_dict(torch.load(model_state))
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     criterion = nn.CrossEntropyLoss()
     # model, batch_params, batch_losses = tune_RNN_network(model, optimizer, criterion, batch_size,
     #                                                      n_epochs=n_epochs,
@@ -82,19 +84,21 @@ if TUNING:
     #                                                      new_data=(new_train_data, new_valid_data, new_test_data),
     #                                                      max_patience=50,
     #                                                      save_folder=MODEL_SAVE_FOLDER,
-    #                                                      save=False,
-    #                                                      show=False)
+    #                                                      oldnew=JOINT_DATA,
+    #                                                      save=True,
+    #                                                      show=True)
 
     """test_tuned_model will return the predicted vs true labels for use in confusion matrix plotting"""
-    grasp_pred_labels = test_tuned_model(model, n_epochs, batch_size, classes, criterion,
-                                         old_data=(old_train_data, old_valid_data, old_test_data),
-                                         new_data=(new_train_data, new_valid_data, new_test_data),
-                                         show_confusion=False)
+    # grasp_pred_labels = test_tuned_model(model, n_epochs, batch_size, classes, criterion,
+    #                                      old_data=(old_train_data, old_valid_data, old_test_data),
+    #                                      new_data=(new_train_data, new_valid_data, new_test_data),
+    #                                      oldnew=JOINT_DATA, show_confusion=False)
     model_file = f'{MODEL_SAVE_FOLDER}{model_name}_labels'
 
     online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion,
                               old_data=(old_train_data, old_valid_data, old_test_data),
-                              new_data=(new_train_data, new_valid_data, new_test_data))
+                              new_data=(new_train_data, new_valid_data, new_test_data),
+                              oldnew=JOINT_DATA)
     # df = pd.DataFrame(columns=["True Values", "Pred Values"])
     # df["True Values"], df["Pred Values"] = true_labels, pred_labels
     # plot_confusion(pred_labels, true_labels, model_name, n_grasps, iter=True)
