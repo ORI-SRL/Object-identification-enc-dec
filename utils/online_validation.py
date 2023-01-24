@@ -362,27 +362,33 @@ def organise_tuning_data(old_data_file, old_labels_file, new_data_file, new_labe
 
 
 def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new_data=None, n_epochs=50,
-                     max_patience=25, save_folder='./', save=True, show=True):
+                     max_patience=25, save_folder='./', oldnew=True, save=True, show=True):
     model_name, device, train_loss_out, valid_loss_out, train_acc_out, valid_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
     hidden_size = 7
 
     """Convert data into tensors"""
     old_train_data, old_valid_data, _ = old_data
-    new_train_data, new_valid_data, _ = old_data
+    new_train_data, new_valid_data, _ = new_data
 
     """Calculate how many batches there are"""
 
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
     half_batch = int(batch_size / 2)
 
-    train_batch_reminder = len(new_train_data) % half_batch
-    valid_batch_reminder = len(new_valid_data) % half_batch
+    train_batch_reminder = len(old_train_data) % half_batch
+    valid_batch_reminder = len(old_valid_data) % half_batch
 
-    n_train_batches = int(len(new_train_data) / half_batch) if train_batch_reminder == 0 else int(
-        len(new_train_data) / half_batch) + 1
-    n_valid_batches = int(len(new_valid_data) / half_batch) if valid_batch_reminder == 0 else int(
-        len(new_valid_data) / half_batch)
+    if oldnew:
+        n_train_batches = int(len(new_train_data) / half_batch) if train_batch_reminder == 0 else int(
+            len(new_train_data) / half_batch) + 1
+        n_valid_batches = int(len(new_valid_data) / half_batch) if valid_batch_reminder == 0 else int(
+            len(new_valid_data) / half_batch) + 1
+    else:
+        n_train_batches = int(len(old_train_data) / half_batch) if train_batch_reminder == 0 else int(
+            len(old_train_data) / half_batch) + 1
+        n_valid_batches = int(len(old_valid_data) / half_batch) if valid_batch_reminder == 0 else int(
+            len(old_valid_data) / half_batch) + 1
 
     old_train_indices = list(range(len(old_train_data)))
     old_valid_indices = list(range(len(old_valid_data)))
@@ -417,12 +423,13 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
             X_new, y_new, _ = new_train_data[new_train_indices[batch_start:batch_end]]
 
             # concatenate the new and old data then add noise to prevent overfitting
-            X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
-            noise = torch.normal(0, 0.2, X_cat.shape)
+            X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) if oldnew else \
+                X_old.reshape(-1, 10, 19).to(device)
+            noise = torch.normal(0, 0.2, X_cat.shape).to(device)
             X_cat += noise
             X_cat[X_cat < 1] = 0
 
-            y_cat = torch.cat([y_old, y_new], dim=0).to(device)
+            y_cat = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_old.to(device)
             batch_ints = list(range(len(y_cat)))
             random.shuffle(batch_ints)
             X = X_cat[batch_ints, :, :]
@@ -478,11 +485,12 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
             X_old, y_old, _ = old_valid_data[old_valid_indices[batch_start:batch_end]]
             X_new, y_new, _ = new_valid_data[new_valid_indices[batch_start:batch_end]]
 
-            X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
-            noise = torch.normal(0, 0.2, X_cat.shape)
+            X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) if oldnew else \
+                X_old.reshape(-1, 10, 19).to(device)
+            noise = torch.normal(0, 0.2, X_cat.shape).to(device)
             X_cat += noise
             X_cat[X_cat < 1] = 0
-            y_cat = torch.cat([y_old, y_new], dim=0).to(device)
+            y_cat = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_old.to(device)
             batch_ints = list(range(len(y_cat)))
             random.shuffle(batch_ints)
             X = X_cat[batch_ints, :, :]
@@ -558,7 +566,7 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
 
 
 def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=None, new_data=None,
-                     show_confusion=True):
+                     oldnew=True, show_confusion=True):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
 
@@ -584,17 +592,20 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     obj_nums = torch.zeros(7).to(device)
     """Extract data"""
     _, _, old_test_data = old_data
-    _, _, new_test_data = old_data
+    _, _, new_test_data = new_data
 
     """Calculate how many batches there are"""
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
     half_batch = batch_size / 2
 
-    test_batch_reminder = len(new_test_data) % half_batch
+    test_batch_reminder = len(old_test_data) % half_batch
 
-    n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
-        len(new_test_data) / half_batch)
-
+    if oldnew:
+        n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
+            len(new_test_data) / half_batch) + 1
+    else:
+        n_test_batches = int(len(old_test_data) / half_batch) if test_batch_reminder == 0 else int(
+            len(old_test_data) / half_batch)
     old_test_indices = list(range(len(old_test_data)))
     new_test_indices = list(range(len(new_test_data)))
 
@@ -614,18 +625,19 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
         # Take each testing batch and process
         batch_start = i * batch_size
         batch_end = i * batch_size + batch_size \
-            if i * batch_size + batch_size < len(new_test_data) \
-            else len(new_test_data)
+            if i * batch_size + batch_size < len(old_test_data) \
+            else len(old_test_data)
 
         X_old, y_old, y_labels_old = old_test_data[old_test_indices[batch_start:batch_end]]
         X_new, y_new, y_labels_new = new_test_data[new_test_indices[batch_start:batch_end]]
 
-        X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device)
+        X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) if oldnew else \
+            X_old.reshape(-1, 10, 19).to(device)
         noise = torch.normal(0, 0.2, X.shape).to(device)
         X += noise
         X[X < 1] = 0
-        y = torch.cat([y_old, y_new], dim=0).to(device)
-        y_labels = np.concatenate([y_labels_old, y_labels_new])
+        y = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_old.to(device)
+        y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_labels_old
 
         true_labels.extend(y_labels.squeeze().tolist())
 
@@ -689,7 +701,7 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     test_acc_out.append(test_accuracy)
 
     grasp_accuracy[:, 1] = grasp_accuracy[:, 1] / n_test_batches
-    # print(f'Grasp accuracy: {grasp_accuracy}')
+    print(f'Grasp accuracy: {grasp_accuracy}')
     g_acc = np.mean(grasp_accuracy[:, 1])
     # g_acc_list.append(g_acc)
     # print(f'{ko} sensor: {g_acc}')
@@ -709,7 +721,7 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
         minAbsE = torch.min(minE, minAbsE)
 
     # obj_embed_avg = [(em - minAbsE) / (maxAbsE - minAbsE) for em in obj_embed_avg]
-
+    plt.rcParams.update({'font.size': 15})
     fig = plt.figure()
     gs = GridSpec(2, 72, figure=fig)
     ax = [fig.add_subplot(gs[0, 0:17]), fig.add_subplot(gs[0, 18:35]), fig.add_subplot(gs[0, 36:53]),
