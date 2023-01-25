@@ -616,8 +616,10 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
 
     # for sensors in range(10):
     #     for ko in range(20):
-    grasp_accuracy = np.zeros((10, 2)).astype(float)  # setup for accuracy at each grasp number
+    grasp_accuracy = np.zeros((10, 3)).astype(float)  # setup for accuracy at each grasp number
     grasp_accuracy[:, 0] = np.linspace(1, 10, 10)
+
+    model.eval()
     for i in range(n_test_batches):
 
         # Take each testing batch and process
@@ -652,18 +654,18 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
             frm.requires_grad_()
             # set hidden layer
             hidden = torch.full((X_pad.size(0), hidden_size), 1 / 7).to(device)
-            hidden.requires_grad_()
+            # hidden.requires_grad_()
 
             """ iterate through each grasp and run the model """
             output, embedding = model(frm, hidden)
-            hidden = output
+            # hidden = output
 
             for j in range(1, padded_start + 1):
                 frm = X_pad[:, j, :]
                 frm.requires_grad_()
-                hidden.requires_grad_()
+                # hidden.requires_grad_()
                 output, embedding = model(frm, hidden)
-                hidden = output
+                # hidden = output
 
                 # saliencies_frm, saliencies_hidden, grasp_sal_frm_dd, grasp_sal_hid_dd, grasp_sal_count =
                 # salience_calc( X_pad[:, j, :], hidden, saliencies_frm, saliencies_hidden, grasp_sal_frm_dd,
@@ -672,7 +674,7 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
             loss2 = criterion(output, y.squeeze())
             test_loss += loss2.item()
 
-            loss2.backward()
+            # loss2.backward()
             # saliencies_frm, saliencies_hidden, grasp_sal_frm_dd, grasp_sal_hid_dd, grasp_sal_count = salience_calc(
             #     frm, hidden, saliencies_frm, saliencies_hidden, grasp_sal_frm_dd, grasp_sal_hid_dd,
             #     y, j, grasp_sal_count)
@@ -683,6 +685,7 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
 
             test_accuracy += frame_accuracy
             grasp_accuracy[padded_start, 1] += frame_accuracy
+            grasp_accuracy[padded_start, 2] += 1
 
             # Add the output from the embedding
             obj_embed[y.flatten(), :, :] += embedding.reshape((-1, 8, 8))
@@ -865,7 +868,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                                 res.append(idx)
                         y_line = ax.get_lines()[row].get_ydata()[res] + y_shift
                         y_data.append(y_line)
-                        y_shift = max(y_line)
+                        y_shift = max(y_line)+0.3
                     fig, ax = plt.subplots(1, 1)
                     for line in y_data:
                         xx = np.linspace(0, 6, len(line))
@@ -878,18 +881,6 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                     fig.set_size_inches((10.5, 9))
                     # plt.show()
 
-            # use indices of objects to form confusion matrix
-            # for n, _ in enumerate(enc_lab):
-            #     row = enc_lab[n]
-            #     col = inds[n]
-            #     confusion_ints[grasps_taken - 1, row, col] += 1
-            #     # add the prediction and true to the grasp_labels dict
-            #     grasp_num = get_nth_key(grasp_pred_labels, grasps_taken - 1)
-            #     grasp_true_labels[grasp_num].append(classes[row])
-            #     grasp_pred_labels[grasp_num].append(classes[col])
-            #
-            # pred_labels.extend(decode_labels(inds, classes))
-            # true_labels.extend(frame_labels)
     grasp_accuracy[:, 0] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
     print(f'Grasp accuracy: {grasp_accuracy}')
     # extract the confidences for each grasp number and object then ensure there are no nan values and
@@ -915,24 +906,34 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
 
     x = range(1, 11)
     x_start = 0
-    x_bar_ticks = []
+    x_bar_ticks, x_bar_ticks_minor, x_bar_labels = [], [], []
     max_grasps = 5
     fig_line, ax_line = plt.subplots(1, 1)
     fig_bar, ax_bar = plt.subplots(1, 1)
+    color_cycle = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
+                   '#17becf']
     for row, class_name in enumerate(classes):
         y_plt = confidences[row, ~np.isnan(confidences[row, :])]
         x_plt = [*range(len(y_plt))]
         x_bar = [x_start + _ * 0.2 for _ in x_plt]
         x_start = max(x_bar) + 0.4
-        x_bar_ticks.append((max(x_bar) + min(x_bar)) / 2)
+        x_bar_ticks.extend(x_bar)
+        x_bar_ticks_minor.append((max(x_bar) + min(x_bar)) / 2)
+        x_bar_labels.extend([_ + 1 for _ in x_plt])
         # x_bar = [row + _ for _ in x_tix]
         # ax.plot(x_plt, y_plt, '-', label=f'{class_name}')
-        ax_bar.plot(x_bar, y_plt, linewidth=4) if len(x_plt) > 1 else \
-            ax_bar.scatter(x_bar, y_plt, marker='x', linewidth=3)  # label=f'{class_name}'
-        ax_bar.bar(x_bar, y_plt, width=0.15, alpha=0.3)
+        ax_bar.plot(x_bar, y_plt, linewidth=4, color=color_cycle[row]) if len(x_plt) > 1 else \
+            ax_bar.scatter(x_bar, y_plt, marker='x', linewidth=3, color=color_cycle[row])  # label=f'{class_name}'
+        ax_bar.bar(x_bar, y_plt, width=0.15, alpha=0.3, label=classes[row], color=color_cycle[row])
     plt.show()
-    plt.xticks(ticks=x_bar_ticks, labels=classes)
-    ax_bar.set_ylabel('Confidence / %')
-    ax_bar.set_xlabel('Number of grasps')
+    # ax_bar.set_xticks(x_bar_ticks_minor, minor=True)
+    # ax_bar.set_xticks(x_bar_ticks)
+    # ax_bar.set_xticklabels(x_bar_labels)
+    # ax_bar.set_xticklabels(classes, minor=True, direction='out')
 
-    ax_line.legend()
+    plt.xticks(ticks=x_bar_ticks, labels=x_bar_labels)
+    # plt.xticks(ticks=x_bar_ticks_minor, labels=classes, minor=True)
+    ax_bar.set_ylabel('Belief / %')
+    ax_bar.set_xlabel('Objects')
+
+    ax_bar.legend()
