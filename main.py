@@ -13,7 +13,7 @@ from utils.data_handlers import *
 from torch.utils.data import DataLoader
 from utils.networks import *
 # from utils.ml_classifiers import *
-from utils.loss_plotting import *
+from utils.plot_helpers import *
 from utils.online_validation import *
 
 
@@ -95,7 +95,7 @@ if TUNING:
     #                                      oldnew=JOINT_DATA, show_confusion=False)
     model_file = f'{MODEL_SAVE_FOLDER}{model_name}_labels'
 
-    online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion,
+    online_grasp_w_ea56rly_stop(model, n_epochs, batch_size, classes, criterion,
                               old_data=(old_train_data, old_valid_data, old_test_data),
                               new_data=(new_train_data, new_valid_data, new_test_data),
                               oldnew=JOINT_DATA)
