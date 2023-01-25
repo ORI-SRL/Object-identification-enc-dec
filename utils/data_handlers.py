@@ -127,14 +127,22 @@ class ObjectGraspsDataset(Dataset):
 
 class GraspDataset(Dataset):
 
-    def __init__(self, x_filename, y_filename, normalize=False, subset_indices=None):
+    def __init__(self, x_filename, y_filename, normalize=False, minmax=True, subset_indices=None):
 
         # load datasets
         self.X = torch.FloatTensor(np.load(x_filename).reshape(-1, 190))
         self.y_labels = np.load(y_filename).reshape(-1, 1)
 
         if normalize:
-            self.X = (self.X - self.X.mean(dim=0))/self.X.std(dim=0)
+            self.std = self.X.reshape((-1, 19)).std(dim=0)
+            self.mean = self.X.reshape((-1, 19)).mean(dim=0)
+            self.X_original = copy.deepcopy(self.X)
+            self.X = ((self.X.reshape((-1, 19)) - self.mean)/self.std).reshape((-1, 190))
+        elif minmax:
+            self.max = self.X.reshape((-1, 19)).max(dim=0).values
+            self.min = self.X.reshape((-1, 19)).min(dim=0).values
+            self.X_original = copy.deepcopy(self.X)
+            self.X = (self.X - self.min.repeat(10))/(self.max.repeat(10) - self.min.repeat(10))
 
         self.labels = np.unique(self.y_labels)
         self.label_to_cls = dict()

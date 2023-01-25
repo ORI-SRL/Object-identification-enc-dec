@@ -7,11 +7,12 @@ import matplotlib.pyplot as plt
 import copy
 import random
 # from sklearn.metrics import silhouette_score, silhouette_samples
+from utils.simple_io import *
 from sklearn import preprocessing
 from utils import silhouette
 import scipy.io
-from utils.loss_plotting import plot_saliencies
-
+from utils.plot_helpers import plot_saliencies
+from matplotlib.gridspec import GridSpec
 
 def seed_experiment(seed):
     random.seed(seed)
@@ -957,3 +958,329 @@ def test_model(model, train_loader, test_loader, classes, n_grasps, show=True, c
         # plt.show()
 
         return encoded_train_out, train_labels_out, encoded_test_out, test_labels_out, -test_sil
+
+
+def plot_embed(trained_model, valid_data, batch_size, device='cpu', save_folder='./figures/', show=True, save=False):
+    """Convert data into tensors"""
+
+    rnd_model = copy.deepcopy(trained_model)
+    rnd_model.__init__()
+
+    trained_model = trained_model.to(device)
+    rnd_model = rnd_model.to(device)
+
+    trained_model.eval()
+    rnd_model.eval()
+
+    # _, valid_data, _ = data
+
+    batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
+    half_batch = int(batch_size / 2)
+    valid_batch_reminder = len(valid_data) % half_batch
+    n_valid_batches = int(len(valid_data) / half_batch) if valid_batch_reminder == 0 else int(
+        len(valid_data) / half_batch) + 1
+
+    hidden_size = 7
+    n_grasps = 10
+
+    valid_indices = list(range(len(valid_data)))
+    random.shuffle(valid_indices)
+
+    true_labels = []
+    embeddings_trained = []
+    embeddings_rnd = []
+
+    rnd_acc = 0
+    trained_acc = 0
+    for i in range(n_valid_batches):
+
+        # Take each testing batch and process
+        batch_start = i * half_batch
+        batch_end = i * half_batch + half_batch \
+            if i * half_batch + half_batch < len(valid_data) \
+            else len(valid_data)
+
+        X, y, y_labels = valid_data[valid_indices[batch_start:batch_end]]
+
+        X = X.reshape(-1, 10, 19).to(device)
+        y = y.to(device)
+        y_labels = y_labels.squeeze()
+
+        true_labels.extend(y_labels.squeeze().tolist())
+
+        padded_ints = list(range(n_grasps))
+        random.shuffle(padded_ints)
+
+        # randomly switch in zero rows to vary the number of grasps being identified
+        padded_start = 9  # np.random.randint(1, 11)
+        X_pad = X[:, :padded_start + 1, :]
+
+        # set hidden layer
+        hidden_trained = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
+        hidden_rnd = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
+
+        """ iterate through each grasp and run the model """
+        output_trained = trained_model(X_pad[:, 0, :], hidden_trained)
+        hidden_trained = output_trained
+
+        output_rnd = rnd_model(X_pad[:, 0, :], hidden_rnd)
+        hidden_rnd = output_rnd
+
+        for j in range(1, padded_start + 1):
+            output_trained = trained_model(X_pad[:, j, :], hidden_trained)
+            hidden = nn.functional.softmax(output_trained, dim=-1)
+
+            output_rnd = rnd_model(X_pad[:, j, :], hidden_rnd)
+            hidden = nn.functional.softmax(output_rnd, dim=-1)
+
+            # calculate accuracy of classification
+            _, preds_trained = output_trained.detach().max(dim=1)
+            _, preds_rnd = output_rnd.detach().max(dim=1)
+
+
+        trained_acc += torch.sum(preds_trained == y.flatten()).cpu().numpy() / len(preds_trained)
+        rnd_acc += torch.sum(preds_rnd == y.flatten()).cpu().numpy() / len(preds_rnd)
+
+        embedding_trained = trained_model.get_embed().cpu().numpy()
+        embedding_rnd = rnd_model.get_embed().cpu().numpy()
+
+        embeddings_trained.extend(embedding_trained.squeeze())
+        embeddings_rnd.extend(embedding_rnd.squeeze())
+
+    rnd_acc /= n_valid_batches
+    trained_acc /= n_valid_batches
+
+    print(f"trained_acc: {trained_acc}, rnd_acc: {rnd_acc}")
+    true_labels = np.array(true_labels)
+    all_embeds_trained = np.stack(embeddings_trained)
+    all_embeds_rnd = np.stack(embeddings_rnd)
+
+    lbl_to_cls_dict = valid_data.label_to_cls
+    plot_embeddings(true_labels, all_embeds_trained, all_embeds_rnd, lbl_to_cls_dict, save_folder, show, save)
+
+
+def plot_embed_optimize(trained_model, data, device='cpu', save_folder='./figures/', show=True, save=False):
+    """Convert data into tensors"""
+
+    cls_dict = data.label_to_cls
+
+    rnd_model = copy.deepcopy(trained_model)
+    rnd_model.__init__()
+
+    trained_model = trained_model.to(device)
+    rnd_model = rnd_model.to(device)
+
+    trained_model.eval()
+    rnd_model.eval()
+
+    search_space = 1
+    objects = sorted(list(cls_dict.keys()))
+    hidden_size = len(objects)
+
+    input_codes = []
+    target_classes = []
+    for cls in cls_dict.keys():
+        input_codes += [torch.rand(search_space, 10, 19, device=device)]
+        target_classes += [cls_dict[cls]]*search_space
+
+    input_codes_trained = torch.cat(input_codes, dim=0).to(device=device)
+    input_codes_rnd = copy.deepcopy(input_codes_trained)
+    input_codes_trained.requires_grad = True
+    input_codes_rnd.requires_grad = True
+
+    target_classes = torch.Tensor(target_classes).long().to(device)
+
+    optim_rnd = torch.optim.SGD([input_codes_trained], lr=1e-5)
+    optim_trained = torch.optim.SGD([input_codes_rnd], lr=1e-5)
+
+    embeddings_trained = []
+    embeddings_rnd = []
+
+    n_epochs = 10000
+
+    for i in range(n_epochs):
+
+        # Take each testing batch and process
+        clipped_code_trained = torch.nn.Sigmoid()(input_codes_trained)
+        clipped_code_rnd = torch.nn.Sigmoid()(input_codes_rnd)
+
+        # randomly switch in zero rows to vary the number of grasps being identified
+        padded_start = 1  # np.random.randint(1, 11)
+
+        # set hidden layer
+        hidden_trained = torch.full((search_space*hidden_size, hidden_size), 1 / hidden_size).to(device)
+        hidden_rnd = torch.full((search_space*hidden_size, hidden_size), 1 / hidden_size).to(device)
+
+        """ iterate through each grasp and run the model """
+        output_trained = trained_model(clipped_code_trained[:, 0, :], hidden_trained)
+        hidden_trained = output_trained
+
+        output_rnd = rnd_model(clipped_code_rnd[:, 0, :], hidden_rnd)
+        hidden_rnd = output_rnd
+
+        for j in range(1, padded_start + 1):
+            output_trained = trained_model(clipped_code_trained[:, j, :], hidden_trained)
+            hidden_trained = nn.functional.softmax(output_trained, dim=-1)
+
+            output_rnd = rnd_model(clipped_code_rnd[:, j, :], hidden_rnd)
+            hidden_rnd = nn.functional.softmax(output_rnd, dim=-1)
+
+        loss_rnd = nn.CrossEntropyLoss()(output_rnd, target_classes).to(device)
+        loss_trained = nn.CrossEntropyLoss()(output_trained, target_classes)
+
+        loss_rnd.backward()
+        optim_rnd.step()
+
+        loss_trained.backward()
+        optim_trained.step()
+
+        cls_max_trained = output_trained.detach().max(dim=0).values
+        cls_max_rnd = output_rnd.detach().max(dim=0).values
+
+        if np.all(cls_max_trained.cpu().numpy() > 30):
+            embedding_trained = trained_model.get_embed().cpu().numpy()
+            embedding_rnd = rnd_model.get_embed().cpu().numpy()
+
+            embeddings_trained.extend(embedding_trained.squeeze())
+            embeddings_rnd.extend(embedding_rnd.squeeze())
+            break
+
+        print(f"epoch: {i} --- trained: {cls_max_trained},    rnd: {cls_max_rnd}")
+        print()
+
+    embeddings_rnd = np.stack(embeddings_rnd)
+    embeddings_trained = np.stack(embeddings_trained)
+    plot_embeddings(np.array(data.get_labels(target_classes)), embeddings_trained, embeddings_rnd, cls_dict, save_folder, show, save)
+
+
+def plot_embed_optimize_direct(trained_model, data, device='cpu', save_folder='./figures/', show=True, save=True):
+    """Convert data into tensors"""
+
+    cls_dict = data.label_to_cls
+
+    rnd_model = copy.deepcopy(trained_model)
+    rnd_model.__init__()
+
+    trained_model = trained_model.to(device)
+    rnd_model = rnd_model.to(device)
+
+    trained_model.eval()
+    rnd_model.eval()
+
+    search_space = 1
+    objects = sorted(list(cls_dict.keys()))
+    hidden_size = len(objects)
+
+    input_codes = []
+    target_classes = []
+    for cls in cls_dict.keys():
+        input_codes += [torch.rand(search_space, 10, 8, 8, device=device)]
+        target_classes += [cls_dict[cls]]*search_space
+
+    input_codes_trained = torch.cat(input_codes, dim=0).to(device=device)
+    input_codes_rnd = copy.deepcopy(input_codes_trained)
+    input_codes_trained.requires_grad = True
+    input_codes_rnd.requires_grad = True
+
+    target_classes = torch.Tensor(target_classes).long().to(device)
+
+    optim_rnd = torch.optim.SGD([input_codes_trained], lr=1e-5)
+    optim_trained = torch.optim.SGD([input_codes_rnd], lr=1e-5)
+
+    embeddings_trained = []
+    embeddings_rnd = []
+
+    n_epochs = 10000
+
+    for i in range(n_epochs):
+
+        # Take each testing batch and process
+
+        # randomly switch in zero rows to vary the number of grasps being identified
+        padded_start = 9  # np.random.randint(1, 11)
+
+        # set hidden layer
+        hidden_trained = torch.full((search_space*hidden_size, hidden_size), 1 / hidden_size).to(device)
+        hidden_rnd = torch.full((search_space*hidden_size, hidden_size), 1 / hidden_size).to(device)
+
+        """ iterate through each grasp and run the model """
+        output_trained = trained_model(input_codes_trained[:, 0, ...], hidden_trained)
+        hidden_trained = nn.functional.softmax(output_trained, dim=-1)
+
+        output_rnd = rnd_model(input_codes_rnd[:, 0, ...], hidden_rnd)
+        hidden_rnd = nn.functional.softmax(output_rnd, dim=-1)
+
+        for j in range(1, padded_start + 1):
+            output_trained = trained_model(input_codes_trained[:, j, ...], hidden_trained)
+            hidden_trained = nn.functional.softmax(output_trained, dim=-1)
+
+            output_rnd = rnd_model(input_codes_rnd[:, j, ...], hidden_rnd)
+            hidden_rnd = nn.functional.softmax(output_rnd, dim=-1)
+
+        loss_rnd = nn.CrossEntropyLoss()(output_rnd, target_classes).to(device)
+        loss_trained = nn.CrossEntropyLoss()(output_trained, target_classes).to(device)
+
+        loss_rnd.backward()
+        optim_rnd.step()
+
+        loss_trained.backward()
+        optim_trained.step()
+
+        cls_max_trained = output_trained.detach().max(dim=0).values
+        cls_max_rnd = output_rnd.detach().max(dim=0).values
+
+        if np.all(cls_max_trained.cpu().numpy() > 35) or i >= n_epochs-1:
+            embedding_trained = trained_model.get_embed().cpu().numpy()
+            embedding_rnd = rnd_model.get_embed().cpu().numpy()
+
+            embeddings_trained.extend(embedding_trained.squeeze())
+            embeddings_rnd.extend(embedding_rnd.squeeze())
+            break
+
+        print(f"epoch: {i} --- trained: {cls_max_trained},    rnd: {cls_max_rnd}")
+        print()
+
+    embeddings_rnd = np.stack(embeddings_rnd)
+    embeddings_trained = np.stack(embeddings_trained)
+    plot_embeddings(np.array(data.get_labels(target_classes)), embeddings_trained, embeddings_rnd, cls_dict, save_folder, show, save)
+
+
+
+def plot_embeddings(true_labels, all_embeds_trained, all_embeds_rnd, lbl_to_cls_dict, save_folder, show, save):
+
+    objects = sorted(list(lbl_to_cls_dict.keys()))
+    hidden_size = len(objects)
+    fig = plt.figure(figsize=(hidden_size * 5, 10))
+    gs = GridSpec(2, hidden_size * 5, figure=fig)
+    gs.tight_layout(fig, pad=.4, w_pad=0.5, h_pad=1.0)
+
+    # ----------------------------------------------------------------------------------#
+
+    for i, cls in enumerate(lbl_to_cls_dict.keys()):
+        indices = true_labels == cls
+        img = all_embeds_trained[indices][0]
+
+        ax1 = fig.add_subplot(gs[0, i * 5:(i + 1) * 5])
+        ax1.imshow(img, interpolation='bilinear', cmap='Blues')
+        ax1.set_xlabel(cls, fontsize=40, weight='bold')
+        ax1.set_xticks([])
+        ax1.set_yticks([])
+
+        img = all_embeds_rnd[indices][0]
+        ax2 = fig.add_subplot(gs[1, i * 5:(i + 1) * 5])
+        ax2.imshow(img, interpolation='bilinear', cmap='Blues')
+        ax2.set_xlabel(cls, fontsize=40, weight='bold')
+        ax2.set_xticks([])
+        ax2.set_yticks([])
+
+    # fig.suptitle("Embedding Activation", fontsize=46)
+    if save:
+        if not folder_exists(save_folder):
+            folder_create(save_folder)
+        fig_name = f"{save_folder}embedding_trained.png"
+        fig.savefig(fig_name, dpi=300)
+        print(f"saved figure: '{fig_name}'")
+    if show:
+        plt.show()
+
+    plt.close('all')
