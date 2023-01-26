@@ -168,13 +168,18 @@ class IterativeRNN4(nn.Module):  # this takes in the previous prediction to info
         self.tanh = nn.Tanh()
         self.drop = nn.Dropout(0.15)
         self.sensdrop = nn.Dropout(18/19)
+        self.embed = None
 
         self.softmax = nn.Softmax(dim=-1)
+
+    def get_embed(self):
+        return self.embed
 
     def forward(self, x, pred_in):
         # x = self.sensdrop(x)
         x = self.lin1(x)
         embed_layer = x.reshape(-1, 1, 8, 8)
+        self.embed = embed_layer.detach()
         x_aug = self.cnn1_block(embed_layer)
         x = torch.cat((x_aug.view(x.shape[0], -1), pred_in), -1)
         x = self.lin2(x)
@@ -182,7 +187,7 @@ class IterativeRNN4(nn.Module):  # this takes in the previous prediction to info
         x = self.drop(x)
         output = self.linOut(x)
 
-        return output, embed_layer  # , pred_back, saliency
+        return output
 
 
 class IterativeCNN(nn.Module):
