@@ -378,11 +378,17 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
     valid_batch_reminder = len(new_valid_data) % half_batch if oldnew else len(old_valid_data) % half_batch
 
     if oldnew:
+        train_batch_reminder = len(new_train_data) % half_batch
+        valid_batch_reminder = len(new_train_data) % half_batch
+
         n_train_batches = int(len(new_train_data) / half_batch) if train_batch_reminder == 0 else int(
             len(new_train_data) / half_batch) + 1
         n_valid_batches = int(len(new_valid_data) / half_batch) if valid_batch_reminder == 0 else int(
             len(new_valid_data) / half_batch) + 1
     else:
+        train_batch_reminder = len(old_train_data) % half_batch
+        valid_batch_reminder = len(old_valid_data) % half_batch
+
         n_train_batches = int(len(old_train_data) / half_batch) if train_batch_reminder == 0 else int(
             len(old_train_data) / half_batch) + 1
         n_valid_batches = int(len(old_valid_data) / half_batch) if valid_batch_reminder == 0 else int(
@@ -414,8 +420,12 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
 
             # Take each training batch and process
             batch_start = i * half_batch
-            batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_train_data) else len(
-                new_train_data)
+            if oldnew:
+                batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_train_data) \
+                    else len(new_train_data)
+            else:
+                batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_train_data) \
+                    else len(old_train_data)
 
             X_old, y_old, _ = old_train_data[old_train_indices[batch_start:batch_end]]
             X_new, y_new, _ = new_train_data[new_train_indices[batch_start:batch_end]]
@@ -423,9 +433,7 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
             # concatenate the new and old data then add noise to prevent overfitting
             X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) if oldnew else \
                 X_old.reshape(-1, 10, 19).to(device)
-            noise = torch.normal(0, 0.2, X_cat.shape).to(device)
-            X_cat += noise
-            X_cat[X_cat < 1] = 0
+            # X_cat[X_cat < 1] = 0
 
             y_cat = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_old.to(device)
             batch_ints = list(range(len(y_cat)))
@@ -445,15 +453,15 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
                 X_pad = X[:, :padded_start + 1, :]
 
                 # set hidden layer
-                hidden = torch.full((X_pad.size(0), hidden_size), 1 / 7).to(device)
+                hidden = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
 
                 optimizer.zero_grad()
                 """ iterate through each grasp and run the model """
-                output, embedding = model(X_pad[:, 0, :], hidden)
-                hidden = output
+                output = model(X_pad[:, 0, :], hidden)
+                hidden = nn.functional.softmax(output, dim=-1)
                 for j in range(1, padded_start + 1):
-                    output, embedding = model(X_pad[:, j, :], hidden)
-                    hidden = output
+                    output = model(X_pad[:, j, :], hidden)
+                    hidden = nn.functional.softmax(output, dim=-1)
 
                 frame_loss = criterion(output, y.squeeze())
                 frame_loss.backward()
@@ -476,18 +484,22 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
         for i in range(n_valid_batches):
 
             # Take each validation batch and process
-            batch_start = i * batch_size
-            batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(new_valid_data) else len(
-                new_valid_data)
+            batch_start = i * half_batch
+            if oldnew:
+                batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_valid_data) \
+                    else len(new_valid_data)
+            else:
+                batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_valid_data) \
+                    else len(old_train_data)
 
             X_old, y_old, _ = old_valid_data[old_valid_indices[batch_start:batch_end]]
             X_new, y_new, _ = new_valid_data[new_valid_indices[batch_start:batch_end]]
 
             X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) if oldnew else \
                 X_old.reshape(-1, 10, 19).to(device)
-            noise = torch.normal(0, 0.2, X_cat.shape).to(device)
-            X_cat += noise
-            X_cat[X_cat < 1] = 0
+            # noise = torch.normal(0, 0.2, X_cat.shape).to(device)
+            # X_cat += noise
+            # X_cat[X_cat < 1] = 0
             y_cat = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_old.to(device)
             batch_ints = list(range(len(y_cat)))
             random.shuffle(batch_ints)
@@ -504,14 +516,14 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
                 X_pad = X[:, :padded_start + 1, :]
 
                 # set the first hidden layer as a vanilla prediction or zeros
-                hidden = torch.zeros(X_pad.size(0), hidden_size).to(device)
+                hidden = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
 
-                output, embedding = model(X_pad[:, 0, :].float(), hidden)
-                hidden = output
+                output = model(X_pad[:, 0, :].float(), hidden)
+                hidden = nn.functional.softmax(output, dim=-1)
                 """ Run the model through each grasp """
                 for j in range(1, padded_start + 1):
-                    output, embedding = model(X_pad[:, j, :].float(), hidden)
-                    hidden = copy.copy(output)
+                    output = model(X_pad[:, j, :].float(), hidden)
+                    hidden = nn.functional.softmax(output, dim=-1)
                 valid_loss += criterion(output, y.squeeze())
 
                 _, preds = output.detach().max(dim=1)
@@ -563,8 +575,9 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new
     return model, best_params, best_loss_dict
 
 
-def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=None, new_data=None,
-                     oldnew=True, show_confusion=True):
+def test_tuned_model(model, n_epochs, batch_size, criterion, old_data=None, new_data=None, oldnew=False,
+                     show_confusion=True):
+
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
 
@@ -576,34 +589,29 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     hidden_size = 7
     n_grasps = 10
 
-    """Setup saliency analysis"""
-    saliencies_hidden = {}
-    saliencies_frm = {}
-    grasp_sal_hid_dd = {}
-    grasp_sal_frm_dd = {}
-    grasp_sal_hid = torch.zeros((7, 10))
-    grasp_sal_frm = torch.zeros((7, 10))
-    grasp_sal_count = torch.zeros((7, 10))
+    grasp_accuracy = np.zeros((10, 2)).astype(float)  # setup for accuracy at each grasp number
+    grasp_accuracy[:, 0] = np.linspace(1, 10, 10)
 
-    """Setup 2D embedding extraction"""
-    obj_embed = torch.zeros((7, 8, 8)).to(device)
-    obj_nums = torch.zeros(7).to(device)
     """Extract data"""
     _, _, old_test_data = old_data
     _, _, new_test_data = new_data
-
     """Calculate how many batches there are"""
-    batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
-    half_batch = batch_size / 2
 
+    half_batch = int(batch_size / 2)
     test_batch_reminder = len(old_test_data) % half_batch if oldnew else len(new_test_data) % half_batch
+    batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
 
     if oldnew:
+        test_batch_reminder = len(new_test_data) % half_batch
+
         n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
             len(new_test_data) / half_batch) + 1
     else:
+        test_batch_reminder = len(old_test_data) % half_batch
+
         n_test_batches = int(len(old_test_data) / half_batch) if test_batch_reminder == 0 else int(
-            len(old_test_data) / half_batch)
+            len(old_test_data) / half_batch) + 1
+
     old_test_indices = list(range(len(old_test_data)))
     new_test_indices = list(range(len(new_test_data)))
 
@@ -611,33 +619,21 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
     random.shuffle(old_test_indices)
     random.shuffle(new_test_indices)
 
-    # get the accuracies for different number of sensors being knocked out
-    g_acc_list = []
-
-    # for sensors in range(10):
-    #     for ko in range(20):
-    grasp_accuracy = np.zeros((10, 3)).astype(float)  # setup for accuracy at each grasp number
-    grasp_accuracy[:, 0] = np.linspace(1, 10, 10)
-
-    model.eval()
     for i in range(n_test_batches):
 
         # Take each testing batch and process
-        batch_start = i * batch_size
-        batch_end = i * batch_size + batch_size \
-            if i * batch_size + batch_size < len(old_test_data) \
-            else len(old_test_data)
+        batch_start = i * half_batch
+        batch_end = i * half_batch + half_batch \
+            if i * half_batch + half_batch < len(new_test_data) \
+            else len(new_test_data)
 
         X_old, y_old, y_labels_old = old_test_data[old_test_indices[batch_start:batch_end]]
         X_new, y_new, y_labels_new = new_test_data[new_test_indices[batch_start:batch_end]]
 
-        X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) if oldnew else \
-            X_old.reshape(-1, 10, 19).to(device)
-        noise = torch.normal(0, 0.2, X.shape).to(device)
-        X += noise
-        X[X < 1] = 0
-        y = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_old.to(device)
-        y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_labels_old
+        X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) \
+            if oldnew else X_old.reshape(-1, 10, 19).to(device)
+        y = torch.cat([y_old, y_new], dim=0).to(device)if oldnew else y_old.to(device)
+        y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_old
 
         true_labels.extend(y_labels.squeeze().tolist())
 
@@ -648,36 +644,19 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
             # randomly switch in zero rows to vary the number of grasps being identified
             padded_start = padded_ints[k]  # np.random.randint(1, 11)
             X_pad = X[:, :padded_start + 1, :]
-            # knock_out_sensors = random.sample(range(19), k=sensors)
-            # X_pad[:, :, knock_out_sensors] = 0
-            frm = X_pad[:, 0, :]
-            frm.requires_grad_()
+
             # set hidden layer
-            hidden = torch.full((X_pad.size(0), hidden_size), 1 / 7).to(device)
-            # hidden.requires_grad_()
+            hidden = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
 
             """ iterate through each grasp and run the model """
-            output, embedding = model(frm, hidden)
-            # hidden = output
-
+            output = model(X_pad[:, 0, :], hidden)
+            hidden = output
             for j in range(1, padded_start + 1):
-                frm = X_pad[:, j, :]
-                frm.requires_grad_()
-                # hidden.requires_grad_()
-                output, embedding = model(frm, hidden)
-                # hidden = output
-
-                # saliencies_frm, saliencies_hidden, grasp_sal_frm_dd, grasp_sal_hid_dd, grasp_sal_count =
-                # salience_calc( X_pad[:, j, :], hidden, saliencies_frm, saliencies_hidden, grasp_sal_frm_dd,
-                # grasp_sal_hid_dd, y, j, grasp_sal_count)
+                output = model(X_pad[:, j, :], hidden)
+                hidden = output
 
             loss2 = criterion(output, y.squeeze())
             test_loss += loss2.item()
-
-            # loss2.backward()
-            # saliencies_frm, saliencies_hidden, grasp_sal_frm_dd, grasp_sal_hid_dd, grasp_sal_count = salience_calc(
-            #     frm, hidden, saliencies_frm, saliencies_hidden, grasp_sal_frm_dd, grasp_sal_hid_dd,
-            #     y, j, grasp_sal_count)
 
             # calculate accuracy of classification
             _, preds = output.detach().max(dim=1)
@@ -685,16 +664,11 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
 
             test_accuracy += frame_accuracy
             grasp_accuracy[padded_start, 1] += frame_accuracy
-            grasp_accuracy[padded_start, 2] += 1
 
-            # Add the output from the embedding
-            obj_embed[y.flatten(), :, :] += embedding.reshape((-1, 8, 8))
-            for ob in y.flatten().tolist():
-                obj_nums[ob] += 1
             # add the prediction and true to the grasp_labels dict
             pred_labels_tmp = old_test_data.get_labels(preds.cpu().numpy())
             pred_labels.extend(pred_labels_tmp)
-            grasp_pred_labels[str(padded_start + 1)].extend(pred_labels_tmp)
+            grasp_pred_labels[str(padded_start+1)].extend(pred_labels_tmp)
 
     test_accuracy = test_accuracy / (n_epochs * n_grasps)
     test_loss = test_loss / (n_epochs * n_grasps)
@@ -703,52 +677,20 @@ def test_tuned_model(model, n_epochs, batch_size, classes, criterion, old_data=N
 
     grasp_accuracy[:, 1] = grasp_accuracy[:, 1] / n_test_batches
     print(f'Grasp accuracy: {grasp_accuracy}')
-    g_acc = np.mean(grasp_accuracy[:, 1])
-    # g_acc_list.append(g_acc)
-    # print(f'{ko} sensor: {g_acc}')
-    #     g_acc_mean = np.mean(g_acc_list)
-    #     print(f'{sensors} sensors: {g_acc_mean}')
-    #     g_acc_list = []
-    print(f'Test acc = {g_acc}')
 
-    """ take average of the embeddings """
-
-    obj_embed_avg = [obj_embed[ob, :, :] / obj_nums[ob] for ob in range(obj_nums.__len__())]
-    maxAbsE, minAbsE = torch.tensor(0.0), torch.tensor(0.0)
-    for m in obj_embed_avg:
-        maxE = torch.max(m)
-        minE = torch.min(m)
-        maxAbsE = torch.max(maxE, maxAbsE)
-        minAbsE = torch.min(minE, minAbsE)
-
-    # obj_embed_avg = [(em - minAbsE) / (maxAbsE - minAbsE) for em in obj_embed_avg]
-    plt.rcParams.update({'font.size': 15})
-    fig = plt.figure()
-    gs = GridSpec(2, 72, figure=fig)
-    ax = [fig.add_subplot(gs[0, 0:16]), fig.add_subplot(gs[0, 18:34]), fig.add_subplot(gs[0, 36:52]),
-          fig.add_subplot(gs[0, 54:70]), fig.add_subplot(gs[1, 9:25]), fig.add_subplot(gs[1, 27:43]),
-          fig.add_subplot(gs[1, 45:61])]
-    ylims = 0.4
-    for n, ob in enumerate(obj_embed_avg):
-        # fig, ax = plt.subplots(figsize=(7, 6))
-        # cbar_ax = fig.add_axes([.895, 0.125, .05, 0.755])
-        axes = sns.heatmap(ob.cpu().detach().numpy(), linewidths=.4, cmap=cm.magma, cbar_kws={'label': 'label'},
-                           ax=ax[n], square=True, cbar=False, vmax=ylims, vmin=-ylims)  # cbar_ax=cbar_ax,  center=0.5,
-        ax[n].set_xlabel(classes[n])
-    plt.show()
     if show_confusion:
         for grasp_no in range(n_grasps):
             unique_labels = new_test_data.labels
-            conf_m = confusion_matrix(true_labels, grasp_pred_labels[str(grasp_no + 1)], labels=unique_labels)
-            # cm_display = ConfusionMatrixDisplay(conf_m, display_labels=unique_labels).plot()
-            conf_m = conf_m.astype('float64')
+            cm = confusion_matrix(true_labels, grasp_pred_labels[str(grasp_no+1)], labels=unique_labels)
+            # cm_display = ConfusionMatrixDisplay(cm, display_labels=unique_labels).plot()
+            cm = cm.astype('float64')
             for row in range(len(unique_labels)):
-                conf_m[row, :] = conf_m[row, :] / conf_m[row, :].sum()
+                cm[row, :] = cm[row, :] / cm[row, :].sum()
             fig = plt.figure()
-            plt.title(f'{grasp_no + 1} grasps - {model.__class__.__name__}')
+            plt.title(f'{grasp_no+1} grasps - {model.__class__.__name__}')
             fig.set_size_inches(8, 5)
             sns.set(font_scale=1.2)
-            cm_display_percentages = sns.heatmap(conf_m, annot=True, fmt='.1%', cmap='Blues',
+            cm_display_percentages = sns.heatmap(cm, annot=True, fmt='.1%', cmap='Blues',
                                                  xticklabels=unique_labels,
                                                  yticklabels=unique_labels, vmin=0, vmax=1).plot()
 
@@ -926,13 +868,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
             ax_bar.scatter(x_bar, y_plt, marker='x', linewidth=3, color=color_cycle[row])  # label=f'{class_name}'
         ax_bar.bar(x_bar, y_plt, width=0.15, alpha=0.3, label=classes[row], color=color_cycle[row])
     plt.show()
-    # ax_bar.set_xticks(x_bar_ticks_minor, minor=True)
-    # ax_bar.set_xticks(x_bar_ticks)
-    # ax_bar.set_xticklabels(x_bar_labels)
-    # ax_bar.set_xticklabels(classes, minor=True, direction='out')
-
     plt.xticks(ticks=x_bar_ticks, labels=x_bar_labels)
-    # plt.xticks(ticks=x_bar_ticks_minor, labels=classes, minor=True)
     ax_bar.set_ylabel('Belief / %')
     ax_bar.set_xlabel('Objects')
 
