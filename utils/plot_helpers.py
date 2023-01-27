@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 # import os
 from os.path import exists
 import numpy as np
+from utils.simple_io import *
+from matplotlib.gridspec import GridSpec
 import torch
 
 
@@ -184,3 +186,44 @@ def plot_saliencies(frame_sal, hidden_sal, frame_std, hidden_std, classes):
     axs['2a'].legend()
     axs['3'].legend()
 
+
+def plot_embeddings(outputs_trained, outputs_rnd, true_labels, all_embeds_trained, all_embeds_rnd, lbl_to_cls_dict, save_folder, show, save):
+
+    objects = sorted(list(lbl_to_cls_dict.keys()))
+    hidden_size = len(objects)
+    fig = plt.figure(figsize=(hidden_size * 5, 10))
+    gs = GridSpec(2, hidden_size * 5, figure=fig)
+    gs.tight_layout(fig, pad=.4, w_pad=0.5, h_pad=1.0)
+
+    # ----------------------------------------------------------------------------------#
+
+    for i, cls in enumerate(objects):
+        indices = true_labels == cls
+
+        idx_trained = outputs_trained[indices][:, lbl_to_cls_dict[cls]].argmax()
+        img_trained = all_embeds_trained[indices][idx_trained]
+        ax1 = fig.add_subplot(gs[0, i * 5:(i + 1) * 5])
+        ax1.imshow(img_trained, interpolation='bilinear', cmap='Blues')
+        ax1.set_xlabel(cls, fontsize=40, weight='bold')
+        ax1.set_xticks([])
+        ax1.set_yticks([])
+
+        idx_rnd = outputs_rnd[indices][:, lbl_to_cls_dict[cls]].argmax()
+        img_rnd = all_embeds_rnd[indices][idx_rnd]
+        ax2 = fig.add_subplot(gs[1, i * 5:(i + 1) * 5])
+        ax2.imshow(img_rnd, interpolation='bilinear', cmap='Blues')
+        ax2.set_xlabel(cls, fontsize=40, weight='bold')
+        ax2.set_xticks([])
+        ax2.set_yticks([])
+
+    # fig.suptitle("Embedding Activation", fontsize=46)
+    if save:
+        if not folder_exists(save_folder):
+            folder_create(save_folder)
+        fig_name = f"{save_folder}embedding_trained.png"
+        fig.savefig(fig_name, dpi=300)
+        print(f"saved figure: '{fig_name}'")
+    if show:
+        plt.show()
+
+    plt.close('all')
