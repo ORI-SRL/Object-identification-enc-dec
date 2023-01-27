@@ -11,8 +11,8 @@ from utils.simple_io import *
 from sklearn import preprocessing
 from utils import silhouette
 import scipy.io
-from utils.plot_helpers import plot_saliencies
-from matplotlib.gridspec import GridSpec
+from utils.plot_helpers import plot_saliencies, plot_embeddings
+
 
 def seed_experiment(seed):
     random.seed(seed)
@@ -30,39 +30,6 @@ def get_device():
     else:
         device = 'cpu'
     return device
-
-
-def encode_labels(labels, classes):
-    """ convert labels in the batch to one-hot encoding"""
-    # encoded_label_frame = torch.zeros((len(labels), 1, 7), dtype=torch.float)  #
-    encoded_label_frame = torch.zeros((len(labels)), dtype=torch.long)  #
-    i = 0
-    for label in labels:
-        # encoded_label_frame[i, 0, classes.index(label)] = 1  # = 1
-        if label[0:2] == 'SH':
-            label = label[2:]
-        encoded_label_frame[i] = classes.index(label)
-        i += 1
-    return encoded_label_frame
-
-
-# def decode_labels(preds, classes):
-#     # encoded_label_frame = torch.zeros((len(labels), 1, 7), dtype=torch.float)  #
-#     decoded_label_frame = []  #
-#     for i, _ in enumerate(preds):
-#         decoded_label_frame.append(classes[preds[i]])
-#     return decoded_label_frame
-
-
-def gamma_loss(x_entropy, frame_out, labels):
-    gamma = 0.9
-    rows = frame_out.size(1)
-    l_n = torch.zeros(rows, 1)
-    for row in range(rows):
-        l_n[row] = x_entropy(frame_out[:, row, :], labels) * pow(gamma, rows - row)
-
-    loss_out = torch.sum(l_n) / rows
-    return loss_out
 
 
 def save_params(filename, loss, params):
@@ -115,852 +82,20 @@ def plot_model(best_loss, train_loss, valid_loss, train_acc, train_val, type):
     return fig
 
 
-def early_stopping(loss_dict, patience, max_patience, valid_loss, train_loss, train_acc, valid_acc, epoch, model,
-                   best_params):
-    early_stop = False
-    loss_sum = valid_acc + train_acc
-    if loss_dict['test_acc'] is None or valid_acc > loss_dict['test_acc']:
+def plot_entropies(entropies, labels):
+    fig, ax = plt.subplots(figsize=(9, 6))
+    plt.grid(True)
 
-        loss_dict = {'train_loss': train_loss, 'test_loss': valid_loss, 'train_acc': train_acc,
-                     'test_acc': valid_acc, 'epoch': epoch}
-        patience = 0
-        best_params = copy.copy(model.state_dict())
-    else:
-        patience += 1
-    if patience == max_patience-1:
-        print(f'Early stopping: training terminated at epoch {epoch} due to es, '
-              f'patience exceeded at {max_patience}')
-        print(f'Best accuracies: Training: {loss_dict["train_acc"]} \t Testing: {loss_dict["test_acc"]}')
-        early_stop = True
-    else:
-        early_stop = False
-    return early_stop, loss_dict, patience, best_params
+    for label in labels:
+        plt.plot(entropies[label], label=label, alpha=.8, marker='o')
 
+    ax.set_xlabel('epoch #', fontsize=25)
+    ax.set_ylabel('Embedded Layer Entropy', fontsize=25)
+    ax.legend(loc='upper right', ncol=2, fontsize=18)
+    plt.show()
 
-def model_init(model, n_grasps=None):
-    model_name = model.__class__.__name__
-    if n_grasps is not None:
-        print(f'{model_name}_{n_grasps}')
-    else:
-        print(model_name)
 
-    device = get_device()
-    print(device)
-    model.to(device)
-
-    # Epochs
-    train_loss_out = []
-    test_loss_out = []
-    train_acc_out = []
-    test_acc_out = []
-
-    patience = 0
-    best_loss_dict = {'train_loss': None, 'valid_loss': None, 'train_acc': None,
-                      'valid_acc': None, 'epoch': None}
-    best_params = None
-    return model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
-        best_params
-
-
-def get_nth_key(dictionary, n=0):
-    if n < 0:
-        n += len(dictionary)
-    for i, key in enumerate(dictionary.keys()):
-        if i == n:
-            return key
-    raise IndexError("dictionary index out of range")
-
-
-def salience_calc(frame, hidden, frame_dict, hidden_dict, nest_frame_dict, nest_hid_dict,
-                  enc_lab, i, sal_count):
-
-    frame_sal, _ = torch.max(frame.grad.data.abs(), dim=1)
-    frame_sal = frame_sal.detach().cpu().numpy()
-    hidden_sal, _ = torch.max(hidden.grad.data.abs(), dim=1)
-    hidden_sal = hidden_sal.detach().cpu().numpy()
-    for i_elem, _ in enumerate(frame_sal):
-        # record general saliencies
-        # frame salience
-        frame_sal = populate_sal_dicts(frame_dict, frame_sal, enc_lab, i_elem)
-        hidden_sal = populate_sal_dicts(hidden_dict, hidden_sal, enc_lab, i_elem)
-
-        # nested dict for the grasps within the objects
-        if enc_lab[i_elem].item() in nest_frame_dict:
-            if i in nest_frame_dict[enc_lab[i_elem].item()]:
-                nest_frame_dict[enc_lab[i_elem].item()][i].append(frame_sal[i_elem])
-            else:
-                nest_frame_dict[enc_lab[i_elem].item()][i] = [frame_sal[i_elem]]
-        else:
-            nest_frame_dict[enc_lab[i_elem].item()] = {}
-            nest_frame_dict[enc_lab[i_elem].item()][i] = [frame_sal[i_elem]]
-        if enc_lab[i_elem].item() in nest_hid_dict:
-            if i in nest_hid_dict[enc_lab[i_elem].item()]:
-                nest_hid_dict[enc_lab[i_elem].item()][i].append(hidden_sal[i_elem])
-            else:
-                nest_hid_dict[enc_lab[i_elem].item()][i] = [hidden_sal[i_elem]]
-        else:
-            nest_hid_dict[enc_lab[i_elem].item()] = {}
-            nest_hid_dict[enc_lab[i_elem].item()][i] = [hidden_sal[i_elem]]
-
-    #  tod: get the grasp saliencies to see how they vary through the iterations
-
-    # for i_elem, _ in enumerate(hidden):
-    #     hidden_dict[enc_lab[i_elem].item(), i] += hidden_sal[i_elem]
-    #     frame_dict[enc_lab[i_elem].item(), i] += frame_sal[i_elem]
-    #     sal_count[enc_lab[i_elem].item(), i] += 1
-
-    return frame_dict, hidden_dict, nest_frame_dict, nest_hid_dict, sal_count
-
-
-def salience_std(sal):
-    grasp_std = {}
-    grasp_mean = {}
-    norm_data = {}
-    data_max = {}
-    for outers in sal:
-        for inners in sal[outers]:
-            inner_max = max(sal[outers][inners][0:-1])
-            if outers not in data_max:
-                data_max[outers] = 1  # 0.0
-            if inner_max > data_max[outers]:
-                data_max[outers] = 1  # inner_max
-    for val in sal:
-        for val_inner in sal[val]:
-            data = np.array(sal[val][val_inner])
-            data = data / data_max[val]
-            data_std = np.var(data[0:-1])
-            data_mean = np.mean(data[0:-1])
-            if val in grasp_std:
-                grasp_std[val].append(data_std)
-                grasp_mean[val].append(data_mean)
-            else:
-                grasp_std[val] = [data_std]  # [grasp_var ** 0.5]
-                grasp_mean[val] = [data_mean]
-                # norm_data[val] = {}
-            # norm_data[val][val_inner] = torch.mean(torch.from_numpy((data - data_mean) / data_std))
-
-    return grasp_std, grasp_mean
-
-
-def populate_sal_dicts(sal_dict, sal_vals, obj_labels, idx):
-    if obj_labels[idx].item() in sal_dict:
-        sal_dict[obj_labels[idx].item()].append(sal_vals[idx])
-    else:
-        sal_dict[obj_labels[idx].item()] = [sal_vals[idx]]
-    return sal_dict
-
-
-def train_RNN(model, train_loader, test_loader, optimizer, criterion, classes, batch_size, n_epochs=50,
-              max_patience=25, save_folder='./', save=True, show=True):
-    model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
-        best_params = model_init(model)
-    hidden_size = 7
-
-    for epoch in range(1, n_epochs + 1):
-        train_loss, test_loss, train_accuracy, test_accuracy = 0.0, 0.0, 0.0, 0.0
-        cycle = 0
-        confusion_ints = torch.zeros((7, 7)).to(device)
-        grasp_accuracy = torch.zeros((10, 2)).to(device)
-        model.train()
-        for data in train_loader:
-            # Take each training batch and process
-            frame = data["data"].to(device)  # .reshape(32, 10, 19)
-            frame_labels = data["labels"]
-            frame_loss = 0
-
-            # randomly switch in zero rows to vary the number of grasps being identified
-            padded_start = np.random.randint(1, 11)
-            frame[:, padded_start:, :] = 0
-            nul_rows = frame.sum(dim=2) != 0
-            frame = frame[:, :padded_start, :]
-            enc_lab = encode_labels(frame_labels, classes).to(device)
-            # convert frame_labels to numeric and allocate to tensor to silhouette score
-            le = preprocessing.LabelEncoder()
-            frame_labels_num = le.fit_transform(frame_labels)
-
-            # set the first hidden layer as a vanilla prediction or zeros
-            if model_name == 'IterativeRNN2':
-                hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
-            elif model_name == 'LSTM':  # input a vanilla starting layer output
-                hidden = (torch.zeros(1, 64).to(device), torch.zeros(1, 64).to(device))
-            else:
-                hidden = torch.zeros(frame.size(0), hidden_size).to(device)
-            # optimizer.zero_grad()
-
-            if model_name == 'IterativeRCNN':
-                frame = frame.reshape(frame.size(0), -1, 1, 19)
-                hidden = hidden.reshape(frame.size(0), 1, -1)
-            optimizer.zero_grad()
-
-            # iterate through each grasp and run the model
-            for i in range(padded_start):
-
-                if model_name == 'SilhouetteRNN':
-                    output, hidden, embeddings = model(frame[:, i, :], hidden)
-                    loss1 = criterion(output, enc_lab)
-                    # calculate the silhouette score at the bottleneck and add it to the loss value
-                    loss2 = silhouette.silhouette.score(embeddings, enc_lab, loss=True)
-                    loss = loss1 + 2 * loss2
-                else:
-                    output = model(frame[:, i, :], hidden)
-                    loss = criterion(output, enc_lab)
-                    hidden = copy.copy(output)
-                # if model_name == 'IterativeRCNN':
-                #     hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
-
-                frame_loss += loss  # * np.exp(- i/11)  #loss_weights[i]  #
-            frame_loss.backward()
-            optimizer.step()
-            output = nn.functional.softmax(output, dim=-1)
-
-            _, inds = output.max(dim=1)
-            frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
-            train_accuracy += frame_accuracy
-            grasp_accuracy[padded_start - 1, 1] += 1
-            grasp_accuracy[padded_start - 1, 0] += frame_accuracy
-            train_loss += frame_loss / padded_start
-            cycle += 1
-
-        train_loss = train_loss.detach().cpu() / len(train_loader)
-        train_accuracy = train_accuracy / len(train_loader)
-        train_loss_out.append(train_loss)
-        train_acc_out.append(train_accuracy)
-        grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
-        grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
-
-        grasp_accuracy = torch.zeros((10, 2)).to(device)
-        model.eval()
-        for data in test_loader:
-            # Take each test batch and run the model
-            frame = data["data"].to(device)  # .reshape(32, 10, 19)
-            frame_labels = data["labels"]
-            frame_loss = 0
-            # randomly switch in zero rows to vary the number of grasps being identified
-            padded_start = np.random.randint(1, 11)
-            frame[:, padded_start:, :] = 0
-            nul_rows = frame.sum(dim=2) != 0
-            frame = frame[:, :padded_start, :]
-            enc_lab = encode_labels(frame_labels, classes).to(device)
-
-            # set the first hidden layer as a vanilla prediction or zeros
-            if model_name == 'IterativeRNN2':
-                hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
-            elif model_name == 'LSTM':  # input a vanilla starting layer output
-                hidden = (torch.zeros(1, 64).to(device), torch.zeros(1, 64).to(device))
-            else:
-                hidden = torch.zeros(frame.size(0), hidden_size).to(device)
-
-            if model_name == 'IterativeRCNN':
-                frame = frame.reshape(frame.size(0), -1, 1, 19)
-                hidden = hidden.reshape(frame.size(0), 1, -1)
-
-            # Run the model through each grasp
-            for i in range(padded_start):
-                if model_name == 'SilhouetteRNN':
-                    output, hidden, embeddings = model(frame[:, i, :], hidden)
-                    loss1 = criterion(output, enc_lab)
-                    # calculate the silhouette score at the bottleneck and add it to the loss value
-                    loss2 = silhouette.silhouette.score(embeddings, enc_lab,
-                                                        loss=True)  # torch.as_tensor(frame_labels_num)
-                    loss3 = loss1 + 2 * loss2
-                else:
-                    output = model(frame[:, i, :], hidden)
-                    loss3 = criterion(output, enc_lab)
-                    hidden = copy.copy(output)
-                if model_name == 'IterativeRCNN':
-                    hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
-
-                frame_loss += loss3
-            test_loss += frame_loss / padded_start
-            _, inds = output.max(dim=1)
-            frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
-            test_accuracy += frame_accuracy
-            grasp_accuracy[padded_start - 1, 1] += 1
-            grasp_accuracy[padded_start - 1, 0] += frame_accuracy
-            for n, _ in enumerate(enc_lab):
-                row = enc_lab[n]
-                col = inds[n]
-                confusion_ints[row, col] += 1
-
-        test_accuracy = test_accuracy / len(test_loader)
-        test_loss = test_loss.detach().cpu() / len(test_loader)
-        test_loss_out.append(test_loss)
-        test_acc_out.append(test_accuracy)
-        confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=1)
-        grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
-        grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
-
-        print('Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \t Training accuracy {:.2f} '
-              '\t Testing accuracy {:.2f}'
-              .format(epoch, train_loss, test_loss, train_accuracy, test_accuracy))
-        # empty cache to prevent overusing the memory
-        torch.cuda.empty_cache()
-        # Early Stopping Logic
-        early_stop, best_loss_dict, patience, best_params = early_stopping(best_loss_dict, patience, max_patience,
-                                                                           test_loss, train_loss, train_accuracy,
-                                                                           test_accuracy, epoch, model, best_params)
-        if early_stop:
-            break
-        loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_accuracy': train_acc_out,
-                     'testing_accuracy': test_acc_out}
-    if save and best_params is not None:
-        model_file = f'{save_folder}{model_name}_dropout2'
-        save_params(model_file, loss_dict, best_params)
-
-    if show:
-        # plot model losses
-        plot_model(best_loss_dict, train_loss_out, test_loss_out, train_acc_out, test_acc_out, type="accuracy")
-
-    return best_params, best_loss_dict
-
-
-def learn_iter_model(model, train_loader, test_loader, optimizer, criterion, classes, n_epochs=50,
-                     max_patience=10, save_folder='./', save=True, show=True):
-    model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
-        best_params = model_init(model)
-
-    try:
-        for epoch in range(1, n_epochs + 1):
-            # monitor training loss
-            train_loss, test_loss, train_accuracy, test_accuracy = 0.0, 0.0, 0.0, 0.0
-            cycle = 0
-            confusion_ints = torch.zeros((7, 7)).to(device)
-            # Training
-            model.train()
-            for data in train_loader:
-                frame = data["data"].to(device)  # .reshape(32, 10, 19)
-                frame_labels = data["labels"]
-
-                # randomly switch in zero rows to vary the number of grasps being identified
-                padded_start = np.random.randint(1, 11)
-                frame[:, padded_start:, :] = 0
-                enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
-                pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
-
-                for r in range(padded_start):
-                    optimizer.zero_grad()
-                    final_row = model(frame[:, r, :], pred_in)  # , output
-                    pred_in = final_row.detach()
-                    grasp_loss = criterion(final_row, enc_lab)  # gamma_loss(criterion, final_row, enc_lab)
-                    if r == 0:
-                        loss = grasp_loss
-                    else:
-                        loss += grasp_loss
-                    train_loss += grasp_loss.item()
-
-                loss.backward()  # loss +
-                optimizer.step()
-                _, inds = final_row.max(dim=1)
-                frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
-                train_accuracy += frame_accuracy
-                cycle += 1
-            train_loss = train_loss / len(train_loader)
-            train_accuracy = train_accuracy / len(train_loader)
-            train_loss_out.append(train_loss)
-            train_acc_out.append(train_accuracy)
-
-            model.eval()
-            for data in test_loader:
-                # take the next frame from the data_loader and process it through the model
-                frame = data["data"].to(device)
-                frame_labels = data["labels"]
-                # randomly switch in zero rows to vary the number of grasps being identified
-                padded_start = np.random.randint(1, 11)
-                frame[:, padded_start:, :] = 0
-                enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
-                # set the initial guess as a flat probability for each object
-                pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
-
-                for r in range(padded_start):
-                    final_row = model(frame[:, r, :], pred_in)
-                    pred_in = final_row.detach()
-                    loss2 = criterion(final_row, enc_lab)  # gamma_loss(criterion, output, enc_lab)
-                    test_loss += loss2.item()
-
-                _, inds = final_row.max(dim=1)
-                frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
-                test_accuracy += frame_accuracy
-
-                for n, _ in enumerate(enc_lab):
-                    row = enc_lab[n]
-                    col = inds[n]
-                    confusion_ints[row, col] += 1
-
-            test_accuracy = test_accuracy / len(test_loader)
-            test_loss = test_loss / len(test_loader)
-            test_loss_out.append(test_loss)
-            test_acc_out.append(test_accuracy)
-            confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=1)
-
-            print('Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \t Training accuracy {:.2f} '
-                  '\t Testing accuracy {:.2f}'
-                  .format(epoch, train_loss, test_loss, train_accuracy, test_accuracy))
-            # empty cache to prevent overusing the memory
-            torch.cuda.empty_cache()
-
-            # Early Stopping Logic
-            early_stop, best_loss_dict, patience, best_params = early_stopping(best_loss_dict, patience, max_patience,
-                                                                               test_loss, train_loss, train_accuracy,
-                                                                               test_accuracy, epoch, model, best_params)
-            if early_stop:
-                break
-            loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_accuracy': train_acc_out,
-                         'testing_accuracy': test_acc_out}
-
-    except Exception as inst:
-        print(type(inst))  # the exception instance
-        print(inst.args)  # arguments stored in .args
-        print(inst)  # __str__ allows args to be printed directly,
-        torch.cuda.memory_snapshot()
-        model_file = f'{save_folder}{model_name}_dropout_model_state_failed.pt'
-        torch.save(best_params, model_file)
-
-    print('Best parameters at:'
-          'Epoch: {} \tTraining Loss: {:.4f} \tTesting loss: {:.4f} \tTraining accuracy: {:.2f} '
-          '\tTesting accuracy {:.2f}'
-          .format(best_loss_dict['epoch'], best_loss_dict['train_loss'], best_loss_dict['test_loss'],
-                  best_loss_dict['train_acc'], best_loss_dict['test_acc']))
-
-    if save and best_params is not None:
-        model_file = f'{save_folder}{model_name}_dropout'
-        save_params(model_file, loss_dict, best_params)
-
-    if show:
-        # plot model losses
-        plot_model(best_loss_dict, train_loss_out, test_loss_out, train_acc_out, test_acc_out, type="accuracy")
-
-    return model, best_params, best_loss_dict
-
-
-def test_iter_model(model, test_loader, classes, criterion):
-    model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
-        best_params = model_init(model)
-
-    # Epochs
-    test_loss = 0.0
-    test_accuracy = 0.0
-    grasp_accuracy = torch.zeros((10, 2)).to(device)
-    confusion_ints = torch.zeros((10, 7, 7)).to(device)
-    grasp_true_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
-    grasp_pred_labels = {"1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [], "8": [], "9": [], "10": []}
-    true_labels = []
-    pred_labels = []
-    hidden_size = 7
-    sm = nn.Softmax(dim=1)
-    saliencies_hidden = {}
-    saliencies_frm = {}
-    grasp_sal_hid_dd = {}
-    grasp_sal_frm_dd = {}
-    grasp_sal_hid = torch.zeros((7, 10))
-    grasp_sal_frm = torch.zeros((7, 10))
-    grasp_sal_count = torch.zeros((7, 10))
-
-    for data in test_loader:
-        # take the next frame from the data_loader and process it through the model
-        frame = data["data"].to(device)
-        frame_labels = data["labels"]
-        # randomly switch in zero rows to vary the number of grasps being identified
-        padded_rows_start = np.random.randint(1, 11)
-        frame[:, padded_rows_start:, :] = 0
-        enc_lab = encode_labels(frame_labels, classes).to(device)  # .softmax(dim=-1)
-        # set the initial guess as a flat probability for each object
-        pred_in = torch.full((frame.size(0), 7), 1 / 7).to(device)
-
-        # run the model and calculate loss
-        if model_name == 'IterativeRNN' or 'IterativeRCNN' or 'SilhouetteRNN' or 'IterativeRNN2' or 'LSTM':
-            # set the first hidden layer as a vanilla prediction or zeros
-            if model_name == 'IterativeRNN2':
-                hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
-            elif model_name == 'LSTM':  # input a vanilla starting layer output
-                hidden = (torch.zeros(1, 64).to(device), torch.zeros(1, 64).to(device))
-            else:
-                hidden = torch.zeros(frame.size(0), hidden_size).to(device)
-
-            if model_name == 'IterativeRCNN':
-                frame = frame.reshape(frame.size(0), -1, 1, 19)
-                hidden = hidden.reshape(frame.size(0), 1, -1)
-
-            for i in range(padded_rows_start):
-                # optimizer.zero_grad()
-                if model_name == 'SilhouetteRNN':
-                    output, hidden, embeddings = model(frame[:, i, :], hidden)
-                    loss1 = criterion(output, enc_lab)
-                    # calculate the silhouette score at the bottleneck and add it to the loss value
-                    loss3 = silhouette.silhouette.score(embeddings, enc_lab, loss=True)
-                    loss2 = loss1 + 2 * loss3
-                # LUCA ADD: do the processing here
-                if model_name == 'IterativeRNN2':
-                    frm = copy.deepcopy(frame[:, i, :])
-                    frm.requires_grad_()
-                    hidden.requires_grad_()
-
-                    output = model(frm, hidden)
-
-                    # loss = torch.ones_like(pred_back) - output
-                    # loss.backward()
-
-                    # sm_out = sm(output)
-                    score_max_index = output.argmax(1)  # class output across batches (dim=batch size)
-                    score_max = output[range(output.shape[0]), score_max_index.data].mean()
-                    # make sure this vector is dim=batch size, AND NOT A MATRIX
-                    score_max.backward()
-
-                    # frm_saliency = torch.mean(frm.grad.data.abs(), dim=1).detach().cpu().numpy()
-                    # dim=batch size vectors
-                    frm_saliency, _ = torch.max(frm.grad.data.abs(), dim=1)
-                    frm_saliency = frm_saliency.detach().cpu().numpy()  # variant n.1
-                    # frm_saliency = frm.grad.data.var()  #  variant n.2
-
-                    hidden_saliency, _ = torch.max(hidden.grad.data.abs(), dim=1)  # dim=batch size vectors
-                    hidden_saliency = hidden_saliency.detach().cpu().numpy()
-                    # example on how to save stuff
-                    # tod: sort this into a single dict populating function rather than called each time
-                    # saliences_frm = populate_sal_dict(frm_saliency, enc_lab)
-                    for i_elem, _ in enumerate(frm_saliency):
-                        # record general saliencies
-                        # frame salience
-                        saliencies_frm = populate_sal_dicts(saliencies_frm, frm_saliency, enc_lab, i_elem)
-                        saliencies_hidden = populate_sal_dicts(saliencies_hidden, hidden_saliency, enc_lab, i_elem)
-
-                        # nested dict for the grasps within the objects
-                        if enc_lab[i_elem].item() in grasp_sal_frm_dd:
-                            if i in grasp_sal_frm_dd[enc_lab[i_elem].item()]:
-                                grasp_sal_frm_dd[enc_lab[i_elem].item()][i].append(frm_saliency[i_elem])
-                            else:
-                                grasp_sal_frm_dd[enc_lab[i_elem].item()][i] = [frm_saliency[i_elem]]
-                        else:
-                            grasp_sal_frm_dd[enc_lab[i_elem].item()] = {}
-                            grasp_sal_frm_dd[enc_lab[i_elem].item()][i] = [frm_saliency[i_elem]]
-                        if enc_lab[i_elem].item() in grasp_sal_hid_dd:
-                            if i in grasp_sal_hid_dd[enc_lab[i_elem].item()]:
-                                grasp_sal_hid_dd[enc_lab[i_elem].item()][i].append(hidden_saliency[i_elem])
-                            else:
-                                grasp_sal_hid_dd[enc_lab[i_elem].item()][i] = [hidden_saliency[i_elem]]
-                        else:
-                            grasp_sal_hid_dd[enc_lab[i_elem].item()] = {}
-                            grasp_sal_hid_dd[enc_lab[i_elem].item()][i] = [hidden_saliency[i_elem]]
-
-                    #  tod: get the grasp saliencies to see how they vary through the iterations
-
-                    for i_elem, _ in enumerate(output):
-                        grasp_sal_hid[enc_lab[i_elem].item(), i] += hidden_saliency[i_elem]
-                        grasp_sal_frm[enc_lab[i_elem].item(), i] += frm_saliency[i_elem]
-                        grasp_sal_count[enc_lab[i_elem].item(), i] += 1
-
-                    loss2 = criterion(hidden, enc_lab)
-
-                    # hidden = torch.full((frame.size(0), hidden_size), 1 / 7).to(device)
-                    hidden = copy.copy(output)
-                    output.detach()
-
-                else:
-                    output, hidden, sal = model(frame[:, i, :], hidden)
-
-                    loss2 = criterion(hidden, enc_lab)
-                    # examine the confidence of each final grasp by taking the maximum value of the softmax output
-                    dist = sm(hidden)
-
-                if model_name == 'IterativeRCNN':
-                    hidden = hidden.reshape(frame.size(0), 1, hidden.size(-1))
-            # hidden.backward(torch.ones_like(hidden), retain_graph=True)
-            # hidden.backward(torch.ones_like(hidden))  # clear previous grads
-            last_frame = copy.copy(output)
-        else:
-            last_frame, output = model(frame, pred_in)
-            loss2 = gamma_loss(criterion, output, enc_lab)  # criterion(outputs, enc_lab)
-
-        test_loss += loss2.item()
-
-        # calculate accuracy of classification
-        _, inds = last_frame.max(dim=1)
-        frame_accuracy = torch.sum(inds == enc_lab).cpu().numpy() / len(inds)
-        test_accuracy += frame_accuracy
-        grasp_accuracy[padded_rows_start - 1, 1] += 1
-        grasp_accuracy[padded_rows_start - 1, 0] += frame_accuracy
-
-        # concatenate the mean salience for each variable
-        # frame_salience = torch.cat((frame_salience, salience / len(inds)))
-
-        # use indices of objects to form confusion matrix
-        for n, _ in enumerate(enc_lab):
-            row = enc_lab[n]
-            col = inds[n]
-            confusion_ints[padded_rows_start - 1, row, col] += 1
-            # add the prediction and true to the grasp_labels dict
-            grasp_num = get_nth_key(grasp_pred_labels, padded_rows_start - 1)
-            grasp_true_labels[grasp_num].append(classes[row])
-            grasp_pred_labels[grasp_num].append(classes[col])
-
-        pred_labels.extend(decode_labels(inds, classes))
-        true_labels.extend(frame_labels)
-
-    test_accuracy = test_accuracy / len(test_loader)
-    test_loss = test_loss / len(test_loader)
-    test_loss_out.append(test_loss)
-    test_acc_out.append(test_accuracy)
-    grasp_accuracy[:, 1] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
-    grasp_accuracy[:, 0] = torch.linspace(1, 10, 10, dtype=int)
-    print(f'Grasp accuracy: {grasp_accuracy}')
-    confusion_perc = confusion_ints / torch.sum(confusion_ints, dim=0)
-    print('Frame Saliencies \t Hidden Saliencies')
-    for i, _ in enumerate(saliencies_frm):
-        print(
-            f'{sum(saliencies_frm[i]) / len(saliencies_frm[i])} \t {sum(saliencies_hidden[i]) / len(saliencies_hidden[i])}')
-    # scale the grasp saliencies and print
-    grasp_sal_frm = grasp_sal_frm / grasp_sal_count
-    grasp_sal_hid = grasp_sal_hid / grasp_sal_count
-
-    # calculate variance of the grasp saliences
-    grasp_frm_std, grasp_frm_norm = salience_std(grasp_sal_frm_dd)
-    grasp_hid_std, grasp_hid_norm = salience_std(grasp_sal_hid_dd)
-    plot_saliencies(grasp_frm_norm, grasp_hid_norm, grasp_frm_std, grasp_hid_std, classes)
-
-    torch.set_printoptions(precision=2)
-    print('Frame Saliencies \t Hidden Saliencies')
-    print(f'\n Frame Input Grasp Saliencies \n {grasp_sal_frm} \n Hidden Layer Grasp Saliencies \n {grasp_sal_hid}')
-    return true_labels, pred_labels, grasp_true_labels, grasp_pred_labels
-
-
-def learn_model(model, train_loader, test_loader, optimizer, criterion, n_grasps, n_epochs=50, max_patience=10,
-                save_folder='./', save=True, show=True):
-    model_name, device, train_loss_out, test_loss_out, train_sil_out, test_sil_out, patience, best_loss_dict, \
-        best_params = model_init(model, n_grasps)
-
-    best_loss = None
-    best_params = None
-    try:
-        for epoch in range(1, n_epochs + 1):
-            # monitor training loss
-            train_loss = 0.0
-            test_loss = 0.0
-            train_sil = 0.0
-            test_sil = 0.0
-            cycle = 0
-
-            # Training
-            model.train()
-            for data in train_loader:
-                frame = data["data"].to(device)
-                frame_labels = data["labels"]
-
-                optimizer.zero_grad()
-                outputs, embeddings = model(frame)
-
-                # check if NaNs have appeared and when
-                nan_check = torch.reshape(embeddings, (-1,))
-                if sum(torch.isnan(nan_check)) > 0:
-                    print(f"NaN present at cycle {cycle}")
-
-                loss = criterion(outputs, frame)
-
-                # convert frame_labels to numeric and allocate to tensor to silhouette score
-                le = preprocessing.LabelEncoder()
-                frame_labels_num = le.fit_transform(frame_labels)
-
-                # calculate the silhouette score at the bottleneck and add it to the loss value
-                silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
-                # silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels_num)
-                # silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
-                loss = (loss + 0.025 * silhouette_avg)
-
-                loss.backward()  # loss +
-                optimizer.step()
-                train_loss += loss.item()
-                train_sil += silhouette_avg
-                cycle += 1
-
-            train_loss = train_loss / len(train_loader)
-            train_loss_out.append(train_loss)
-            train_sil = train_sil.detach() / len(train_loader)
-            train_sil_out.append(train_sil)
-
-            model.eval()
-            for data in test_loader:
-                # take the next frame from the data_loader and process it through the model
-                frame = data["data"].to(device)
-                frame_labels = data["labels"]
-
-                # convert frame_labels to numeric and allocate to tensor to silhouette score
-                le = preprocessing.LabelEncoder()
-                frame_labels_num = le.fit_transform(frame_labels)
-                outputs, embeddings = model(frame)
-
-                # calculate the silhouette score at the bottleneck and add it to the loss value
-                # silhouette_avg = silhouette_score(embeddings.cpu().detach().numpy(), frame_labels)
-                # silhouette_avg = torch.from_numpy(np.array(silhouette_avg)) * -1
-                silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
-                loss2 = criterion(outputs, frame)
-                loss2 = (loss2 + 0.025 * silhouette_avg)  # loss2 + 0.02 *
-                test_loss += loss2.item()
-                test_sil += silhouette_avg
-
-            test_loss = test_loss / len(test_loader)
-            test_loss_out.append(test_loss)
-            test_sil = test_sil.detach() / len(test_loader)
-            test_sil_out.append(test_sil)
-
-            # EARLY STOPPING LOGIC
-            if -test_sil > 0.99:
-                best_params = copy.copy(model.state_dict())
-                best_loss_dict = {'train_loss': train_loss, 'test_loss': test_loss, 'train_sil': train_sil,
-                                  'test_sil': test_sil}
-                print('Early stopping: Silhouette score exceeded 0.99')
-                break
-            elif best_loss_dict['test_loss'] is None or test_loss < best_loss_dict['test_loss']:
-
-                best_loss_dict = {'train_loss': train_loss, 'test_loss': test_loss, 'train_sil': train_sil,
-                                  'test_sil': test_sil}
-                patience = 0
-                best_params = copy.copy(model.state_dict())
-            else:
-                patience += 1
-                if patience >= max_patience:
-                    print(f'Early stopping: training terminated at epoch {epoch} due to es, '
-                          f'patience exceeded at {max_patience}')
-                    break
-
-            loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_sil_out,
-                         'testing_silhouette': test_sil_out}
-            # luca: we observe loss*1e3 just for convenience. the loss scaling isn't necessary above
-            print('Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tTraining silhouette score: {:.4f} '
-                  '\tTesting silhouette score {:.4f}'
-                  .format(epoch, train_loss * 1e3, test_loss * 1e3, -train_sil, -test_sil))
-            # empty cache to prevent overusing the memory
-            torch.cuda.empty_cache()
-
-    except Exception as inst:
-        print(type(inst))  # the exception instance
-        print(inst.args)  # arguments stored in .args
-        print(inst)  # __str__ allows args to be printed directly,
-        torch.cuda.memory_snapshot()
-        model_file = f'{save_folder}{model_name}_{n_grasps}grasps_model_state_failed.pt'
-        torch.save(best_params, model_file)
-        loss_dict = {'training': train_loss_out, 'testing': test_loss_out, 'training_silhouette': train_sil_out}
-        # open file for writing, "w" is writing
-        w = csv.writer(open(f'{save_folder}{model.__class__.__name__}_{n_grasps}_losses_failed.csv', 'w'))
-        # loop over dictionary keys and values
-        for key, val in loss_dict.items():
-            # write every key and value to file
-            w.writerow([key, val])
-        return
-
-    print('Best parameters at:'
-          'Epoch: {} \tTraining Loss: {:.8f} \tTesting loss: {:.8f} \tTraining silhouette score: {:.4f} '
-          '\tTesting silhouette score {:.4f}'
-          .format(epoch - max_patience, best_loss_dict['train_loss'] * 1e3, best_loss_dict['test_loss'] * 1e3,
-                  -best_loss_dict['train_sil'], -best_loss_dict['test_sil']))
-
-    if save and best_params is not None:
-        model_file = f'{save_folder}{model_name}_{n_grasps}grasps'
-        save_params(model_file, best_loss_dict, best_params)
-
-    if show:
-        # plot model losses
-        plot_model(best_loss_dict, train_loss_out, test_loss_out, train_sil_out, test_sil_out, type="silhouette")
-
-    return best_params, loss_dict
-
-
-def test_model(model, train_loader, test_loader, classes, n_grasps, show=True, compare=False):
-    model_name = model.__class__.__name__
-    # print(model_name)
-
-    device = get_device()
-    print(device)
-    model.to(device)
-    encoded_train_out = torch.FloatTensor()
-    train_labels_out = []
-    encoded_test_out = torch.FloatTensor()
-    test_labels_out = []
-    model.eval()
-    test_sil = 0.0
-
-    if compare:
-        plt.figure()
-        rows = 10
-        columns = 2
-        n_plots = int(rows * columns)
-        plt.suptitle("Comparison of input and output data from model")
-        plt.GridSpec(rows, columns, wspace=0.25, hspace=1)
-        plt.show()
-
-    for data in train_loader:
-        frame = data["data"].to(device)
-        labels = data["labels"]
-        outputs, embeddings = model(frame)
-        encoded_train_out = torch.cat((encoded_train_out, embeddings.cpu()), 0)
-        train_labels_out.extend(labels)
-
-        if compare:
-            y_max = torch.max(outputs, frame).max()
-            y_max = y_max.cpu().detach().numpy()
-            for i in range(int(n_plots / 2)):
-                ticks = np.linspace(1, 19, 19)
-                exec(f"plt.subplot(grid{[2 * i]})")
-                plt.cla()
-                plt.bar(ticks, frame.cpu()[0, 0, i, :])
-                plt.ylim((0, y_max))
-                plt.title(labels[i])
-                exec(f"plt.subplot(grid{[2 * i + 1]})")
-                plt.cla()
-                plt.bar(ticks, outputs.cpu().detach().numpy()[0, 0, i, :])
-                plt.ylim((0, y_max))
-                plt.title(labels[i])
-    for data in test_loader:
-        frame = data["data"].to(device)
-        labels = data["labels"]
-        outputs, embeddings = model(frame)
-        encoded_test_out = torch.cat((encoded_test_out, embeddings.cpu()), 0)
-        test_labels_out.extend(labels)
-        # convert frame_labels to numeric and allocate to tensor to silhouette score
-        le = preprocessing.LabelEncoder()
-        frame_labels_num = le.fit_transform(labels)
-        silhouette_avg = silhouette.silhouette.score(embeddings, torch.as_tensor(frame_labels_num), loss=True)
-        test_sil += silhouette_avg
-    test_sil = test_sil / len(test_loader)
-
-    if show:
-        # plot encoded data
-        torch.Tensor.ndim = property(lambda self: len(self.shape))
-        x = encoded_test_out[:, 0].cpu().detach().numpy()
-        y = encoded_test_out[:, 1].cpu().detach().numpy()
-        scipy.io.savemat(f'./data/{model_name}_{n_grasps}_bottleneck.mat',
-                         {'Bottleneck_data': encoded_test_out.cpu().detach().numpy(),
-                          'Labels': test_labels_out})
-        plt.figure()
-
-        if encoded_test_out.shape[1] == 3:
-            z = encoded_test_out[:, 2].cpu()
-            z = z.detach().numpy()
-            ax = plt.axes(projection='3d')
-        for label in classes:
-            label_indices = []
-            for idx, _ in enumerate(test_labels_out):
-                if test_labels_out[idx] == label:
-                    label_indices.append(idx)
-            if encoded_test_out.shape[1] == 2:
-                plt.scatter(x[label_indices], y[label_indices], label=label)
-            elif encoded_test_out.shape[1] == 3:
-                ax.scatter3D(x[label_indices], y[label_indices], z[label_indices], label=label, s=2)
-                ax.set_zlabel('Component 3')
-
-        # present overall silhouette score
-        # convert frame_labels to numeric and allocate to tensor to silhouette score
-        le = preprocessing.LabelEncoder()
-        frame_labels_num = le.fit_transform(test_labels_out)
-        silhouette_avg = silhouette.silhouette.score(encoded_test_out, torch.as_tensor(frame_labels_num), loss=False)
-        print(f"Silhouette score: {silhouette_avg}")
-
-        plt.xlabel('Component 1')
-        plt.ylabel('Component 2')
-        plt.legend()
-        plt.suptitle(f"{n_grasps} Grasps Bottleneck Data")
-        # plt.show()
-
-        return encoded_train_out, train_labels_out, encoded_test_out, test_labels_out, -test_sil
-
-
-def plot_embed(trained_model, valid_data, batch_size, device='cpu', save_folder='./figures/', show=True, save=False):
+def plot_embed(trained_model, data, batch_size, device='cpu', save_folder='./figures/', show=True, save=False):
     """Convert data into tensors"""
 
     rnd_model = copy.deepcopy(trained_model)
@@ -976,17 +111,19 @@ def plot_embed(trained_model, valid_data, batch_size, device='cpu', save_folder=
 
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
     half_batch = int(batch_size / 2)
-    valid_batch_reminder = len(valid_data) % half_batch
-    n_valid_batches = int(len(valid_data) / half_batch) if valid_batch_reminder == 0 else int(
-        len(valid_data) / half_batch) + 1
+    valid_batch_reminder = len(data) % half_batch
+    n_valid_batches = int(len(data) / half_batch) if valid_batch_reminder == 0 else int(
+        len(data) / half_batch) + 1
 
     hidden_size = 7
     n_grasps = 10
 
-    valid_indices = list(range(len(valid_data)))
+    valid_indices = list(range(len(data)))
     random.shuffle(valid_indices)
 
     true_labels = []
+    raw_outputs_trained = []
+    raw_outputs_rnd = []
     embeddings_trained = []
     embeddings_rnd = []
 
@@ -997,10 +134,10 @@ def plot_embed(trained_model, valid_data, batch_size, device='cpu', save_folder=
         # Take each testing batch and process
         batch_start = i * half_batch
         batch_end = i * half_batch + half_batch \
-            if i * half_batch + half_batch < len(valid_data) \
-            else len(valid_data)
+            if i * half_batch + half_batch < len(data) \
+            else len(data)
 
-        X, y, y_labels = valid_data[valid_indices[batch_start:batch_end]]
+        X, y, y_labels = data[valid_indices[batch_start:batch_end]]
 
         X = X.reshape(-1, 10, 19).to(device)
         y = y.to(device)
@@ -1028,10 +165,10 @@ def plot_embed(trained_model, valid_data, batch_size, device='cpu', save_folder=
 
         for j in range(1, padded_start + 1):
             output_trained = trained_model(X_pad[:, j, :], hidden_trained)
-            hidden = nn.functional.softmax(output_trained, dim=-1)
+            hidden_trained = nn.functional.softmax(output_trained, dim=-1)
 
             output_rnd = rnd_model(X_pad[:, j, :], hidden_rnd)
-            hidden = nn.functional.softmax(output_rnd, dim=-1)
+            hidden_rnd = nn.functional.softmax(output_rnd, dim=-1)
 
             # calculate accuracy of classification
             _, preds_trained = output_trained.detach().max(dim=1)
@@ -1044,6 +181,9 @@ def plot_embed(trained_model, valid_data, batch_size, device='cpu', save_folder=
         embedding_trained = trained_model.get_embed().cpu().numpy()
         embedding_rnd = rnd_model.get_embed().cpu().numpy()
 
+        raw_outputs_trained.extend(output_trained.detach().squeeze().cpu().numpy())
+        raw_outputs_rnd.extend(output_trained.detach().squeeze().cpu().numpy())
+
         embeddings_trained.extend(embedding_trained.squeeze())
         embeddings_rnd.extend(embedding_rnd.squeeze())
 
@@ -1054,26 +194,37 @@ def plot_embed(trained_model, valid_data, batch_size, device='cpu', save_folder=
     true_labels = np.array(true_labels)
     all_embeds_trained = np.stack(embeddings_trained)
     all_embeds_rnd = np.stack(embeddings_rnd)
+    all_outputs_trained = np.stack(raw_outputs_trained)
+    all_outputs_rnd = np.stack(raw_outputs_rnd)
 
-    lbl_to_cls_dict = valid_data.label_to_cls
-    plot_embeddings(true_labels, all_embeds_trained, all_embeds_rnd, lbl_to_cls_dict, save_folder, show, save)
+    lbl_to_cls_dict = data.label_to_cls
+    plot_embeddings(outputs_trained=all_outputs_trained,
+                    outputs_rnd=all_outputs_rnd,
+                    true_labels=true_labels,
+                    all_embeds_trained=all_embeds_trained,
+                    all_embeds_rnd=all_embeds_rnd,
+                    lbl_to_cls_dict=lbl_to_cls_dict,
+                    save_folder=save_folder,
+                    show=show,
+                    save=save)
 
 
-def plot_embed_optimize(trained_model, data, device='cpu', save_folder='./figures/', show=True, save=False):
+def plot_embed_optimize(model_trained, model_state_trained, data, device='cpu', save_folder='./figures/', show=True, save=False):
     """Convert data into tensors"""
 
     cls_dict = data.label_to_cls
 
-    rnd_model = copy.deepcopy(trained_model)
-    rnd_model.__init__()
+    model_rnd = copy.deepcopy(model_trained)
+    model_rnd.__init__()
+    model_state_rnd = model_rnd.state_dict()
 
-    trained_model = trained_model.to(device)
-    rnd_model = rnd_model.to(device)
+    model_trained = model_trained.to(device)
+    model_rnd = model_rnd.to(device)
 
-    trained_model.eval()
-    rnd_model.eval()
+    model_trained.eval()
+    model_rnd.eval()
 
-    search_space = 1
+    search_space = 100
     objects = sorted(list(cls_dict.keys()))
     hidden_size = len(objects)
 
@@ -1095,10 +246,14 @@ def plot_embed_optimize(trained_model, data, device='cpu', save_folder='./figure
 
     embeddings_trained = []
     embeddings_rnd = []
+    raw_outputs_trained = []
+    raw_outputs_rnd = []
 
     n_epochs = 10000
 
     for i in range(n_epochs):
+        model_trained.load_state_dict(torch.load(model_state_trained))
+        model_rnd.load_state_dict(model_state_rnd)
 
         # Take each testing batch and process
         clipped_code_trained = torch.nn.Sigmoid()(input_codes_trained)
@@ -1112,17 +267,17 @@ def plot_embed_optimize(trained_model, data, device='cpu', save_folder='./figure
         hidden_rnd = torch.full((search_space*hidden_size, hidden_size), 1 / hidden_size).to(device)
 
         """ iterate through each grasp and run the model """
-        output_trained = trained_model(clipped_code_trained[:, 0, :], hidden_trained)
+        output_trained = model_trained(clipped_code_trained[:, 0, :], hidden_trained)
         hidden_trained = output_trained
 
-        output_rnd = rnd_model(clipped_code_rnd[:, 0, :], hidden_rnd)
+        output_rnd = model_rnd(clipped_code_rnd[:, 0, :], hidden_rnd)
         hidden_rnd = output_rnd
 
         for j in range(1, padded_start + 1):
-            output_trained = trained_model(clipped_code_trained[:, j, :], hidden_trained)
+            output_trained = model_trained(clipped_code_trained[:, j, :], hidden_trained)
             hidden_trained = nn.functional.softmax(output_trained, dim=-1)
 
-            output_rnd = rnd_model(clipped_code_rnd[:, j, :], hidden_rnd)
+            output_rnd = model_rnd(clipped_code_rnd[:, j, :], hidden_rnd)
             hidden_rnd = nn.functional.softmax(output_rnd, dim=-1)
 
         loss_rnd = nn.CrossEntropyLoss()(output_rnd, target_classes).to(device)
@@ -1137,12 +292,14 @@ def plot_embed_optimize(trained_model, data, device='cpu', save_folder='./figure
         cls_max_trained = output_trained.detach().max(dim=0).values
         cls_max_rnd = output_rnd.detach().max(dim=0).values
 
-        if np.all(cls_max_trained.cpu().numpy() > 30):
-            embedding_trained = trained_model.get_embed().cpu().numpy()
-            embedding_rnd = rnd_model.get_embed().cpu().numpy()
+        if np.all(cls_max_trained.cpu().numpy() > 50.) or i >= n_epochs-1:
+            embedding_trained = model_trained.get_embed().cpu().numpy()
+            embedding_rnd = model_rnd.get_embed().cpu().numpy()
 
             embeddings_trained.extend(embedding_trained.squeeze())
             embeddings_rnd.extend(embedding_rnd.squeeze())
+            raw_outputs_trained = output_trained.detach().squeeze().cpu().numpy()
+            raw_outputs_rnd = output_rnd.detach().squeeze().cpu().numpy()
             break
 
         print(f"epoch: {i} --- trained: {cls_max_trained},    rnd: {cls_max_rnd}")
@@ -1150,32 +307,41 @@ def plot_embed_optimize(trained_model, data, device='cpu', save_folder='./figure
 
     embeddings_rnd = np.stack(embeddings_rnd)
     embeddings_trained = np.stack(embeddings_trained)
-    plot_embeddings(np.array(data.get_labels(target_classes)), embeddings_trained, embeddings_rnd, cls_dict, save_folder, show, save)
+    plot_embeddings(outputs_trained=raw_outputs_trained,
+                    outputs_rnd=raw_outputs_rnd,
+                    true_labels=np.array(data.get_labels(target_classes)),
+                    all_embeds_trained=embeddings_trained,
+                    all_embeds_rnd=embeddings_rnd,
+                    lbl_to_cls_dict=cls_dict,
+                    save_folder=save_folder,
+                    show=show,
+                    save=save)
 
 
-def plot_embed_optimize_direct(trained_model, data, device='cpu', save_folder='./figures/', show=True, save=True):
+def plot_embed_optimize_direct(model_trained, model_state_trained, data, device='cpu', save_folder='./figures/', show=True, save=True):
     """Convert data into tensors"""
 
     cls_dict = data.label_to_cls
 
-    rnd_model = copy.deepcopy(trained_model)
-    rnd_model.__init__()
+    model_rnd = copy.deepcopy(model_trained)
+    model_rnd.__init__()
+    model_state_rnd = model_rnd.state_dict()
 
-    trained_model = trained_model.to(device)
-    rnd_model = rnd_model.to(device)
+    model_trained = model_trained.to(device)
+    model_rnd = model_rnd.to(device)
 
-    trained_model.eval()
-    rnd_model.eval()
+    model_trained.eval()
+    model_rnd.eval()
 
-    search_space = 1
+    search_space = 100
     objects = sorted(list(cls_dict.keys()))
     hidden_size = len(objects)
 
     input_codes = []
     target_classes = []
-    for cls in cls_dict.keys():
+    for label in objects:
         input_codes += [torch.rand(search_space, 10, 8, 8, device=device)]
-        target_classes += [cls_dict[cls]]*search_space
+        target_classes += [cls_dict[label]]*search_space
 
     input_codes_trained = torch.cat(input_codes, dim=0).to(device=device)
     input_codes_rnd = copy.deepcopy(input_codes_trained)
@@ -1183,16 +349,21 @@ def plot_embed_optimize_direct(trained_model, data, device='cpu', save_folder='.
     input_codes_rnd.requires_grad = True
 
     target_classes = torch.Tensor(target_classes).long().to(device)
+    target_labels = np.array(data.get_labels(target_classes))
 
     optim_rnd = torch.optim.SGD([input_codes_trained], lr=1e-5)
     optim_trained = torch.optim.SGD([input_codes_rnd], lr=1e-5)
 
     embeddings_trained = []
     embeddings_rnd = []
+    raw_outputs_trained = []
+    raw_outputs_rnd = []
 
     n_epochs = 10000
 
     for i in range(n_epochs):
+        model_trained.load_state_dict(torch.load(model_state_trained))
+        model_rnd.load_state_dict(model_state_rnd)
 
         # Take each testing batch and process
 
@@ -1204,83 +375,147 @@ def plot_embed_optimize_direct(trained_model, data, device='cpu', save_folder='.
         hidden_rnd = torch.full((search_space*hidden_size, hidden_size), 1 / hidden_size).to(device)
 
         """ iterate through each grasp and run the model """
-        output_trained = trained_model(input_codes_trained[:, 0, ...], hidden_trained)
+        output_trained = model_trained(input_codes_trained[:, 0, ...], hidden_trained)
         hidden_trained = nn.functional.softmax(output_trained, dim=-1)
 
-        output_rnd = rnd_model(input_codes_rnd[:, 0, ...], hidden_rnd)
+        output_rnd = model_rnd(input_codes_rnd[:, 0, ...], hidden_rnd)
         hidden_rnd = nn.functional.softmax(output_rnd, dim=-1)
 
         for j in range(1, padded_start + 1):
-            output_trained = trained_model(input_codes_trained[:, j, ...], hidden_trained)
+            output_trained = model_trained(input_codes_trained[:, j, ...], hidden_trained)
             hidden_trained = nn.functional.softmax(output_trained, dim=-1)
 
-            output_rnd = rnd_model(input_codes_rnd[:, j, ...], hidden_rnd)
+            output_rnd = model_rnd(input_codes_rnd[:, j, ...], hidden_rnd)
             hidden_rnd = nn.functional.softmax(output_rnd, dim=-1)
 
-        loss_rnd = nn.CrossEntropyLoss()(output_rnd, target_classes).to(device)
         loss_trained = nn.CrossEntropyLoss()(output_trained, target_classes).to(device)
-
-        loss_rnd.backward()
-        optim_rnd.step()
+        loss_rnd = nn.CrossEntropyLoss()(output_rnd, target_classes).to(device)
 
         loss_trained.backward()
         optim_trained.step()
 
-        cls_max_trained = output_trained.detach().max(dim=0).values
-        cls_max_rnd = output_rnd.detach().max(dim=0).values
+        loss_rnd.backward()
+        optim_rnd.step()
 
-        if np.all(cls_max_trained.cpu().numpy() > 35) or i >= n_epochs-1:
-            embedding_trained = trained_model.get_embed().cpu().numpy()
-            embedding_rnd = rnd_model.get_embed().cpu().numpy()
+        cls_max_trained = []
+        cls_max_rnd = []
+        for label in objects:
+            indices = target_labels == label
+            cls = cls_dict[label]
+
+            cls_max_trained.append(output_trained[indices].max(0).values[cls].cpu().detach().item())
+            cls_max_rnd.append(output_rnd[indices].max(0).values[cls].cpu().detach().item())
+
+        if np.all(np.array(cls_max_trained) > 100.) or i >= n_epochs-1:
+            embedding_trained = model_trained.get_embed().cpu().numpy()
+            embedding_rnd = model_rnd.get_embed().cpu().numpy()
 
             embeddings_trained.extend(embedding_trained.squeeze())
             embeddings_rnd.extend(embedding_rnd.squeeze())
+            raw_outputs_trained = output_trained.detach().squeeze().cpu().numpy()
+            raw_outputs_rnd = output_rnd.detach().squeeze().cpu().numpy()
             break
 
-        print(f"epoch: {i} --- trained: {cls_max_trained},    rnd: {cls_max_rnd}")
+        # print(f"epoch: {i} --- "
+        #       f"trained: {''.join([f'{x:.2f} ' for x in cls_max_trained])},    "
+        #       f"rnd: {''.join([f'{x:.2f} ' for x in cls_max_rnd])}")
+        print(f"epoch: {i} --- "
+              f"trained: {hidden_trained.max(0).values},    "
+              f"rnd: {hidden_rnd.max(0).values}")
         print()
 
     embeddings_rnd = np.stack(embeddings_rnd)
     embeddings_trained = np.stack(embeddings_trained)
-    plot_embeddings(np.array(data.get_labels(target_classes)), embeddings_trained, embeddings_rnd, cls_dict, save_folder, show, save)
+    plot_embeddings(outputs_trained=raw_outputs_trained,
+                    outputs_rnd=raw_outputs_rnd,
+                    true_labels=target_labels,
+                    all_embeds_trained=embeddings_trained,
+                    all_embeds_rnd=embeddings_rnd,
+                    lbl_to_cls_dict=cls_dict,
+                    save_folder=save_folder,
+                    show=show,
+                    save=save)
 
 
+def attention_analysis(trained_model, data, batch_size, device='cpu', save_folder='./figures/', show=True, save=False):
+    """Convert data into tensors"""
 
-def plot_embeddings(true_labels, all_embeds_trained, all_embeds_rnd, lbl_to_cls_dict, save_folder, show, save):
+    trained_model = trained_model.to(device)
+    trained_model.eval()
 
-    objects = sorted(list(lbl_to_cls_dict.keys()))
-    hidden_size = len(objects)
-    fig = plt.figure(figsize=(hidden_size * 5, 10))
-    gs = GridSpec(2, hidden_size * 5, figure=fig)
-    gs.tight_layout(fig, pad=.4, w_pad=0.5, h_pad=1.0)
+    # _, valid_data, _ = data
 
-    # ----------------------------------------------------------------------------------#
+    batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
+    half_batch = int(batch_size / 2)
+    valid_batch_reminder = len(data) % half_batch
+    n_valid_batches = int(len(data) / half_batch) if valid_batch_reminder == 0 else int(
+        len(data) / half_batch) + 1
 
-    for i, cls in enumerate(lbl_to_cls_dict.keys()):
-        indices = true_labels == cls
-        img = all_embeds_trained[indices][0]
+    hidden_size = 7
+    n_grasps = 10
 
-        ax1 = fig.add_subplot(gs[0, i * 5:(i + 1) * 5])
-        ax1.imshow(img, interpolation='bilinear', cmap='Blues')
-        ax1.set_xlabel(cls, fontsize=40, weight='bold')
-        ax1.set_xticks([])
-        ax1.set_yticks([])
+    valid_indices = list(range(len(data)))
+    random.shuffle(valid_indices)
 
-        img = all_embeds_rnd[indices][0]
-        ax2 = fig.add_subplot(gs[1, i * 5:(i + 1) * 5])
-        ax2.imshow(img, interpolation='bilinear', cmap='Blues')
-        ax2.set_xlabel(cls, fontsize=40, weight='bold')
-        ax2.set_xticks([])
-        ax2.set_yticks([])
+    true_labels = []
+    raw_outputs_trained = []
+    embeddings_trained = []
 
-    # fig.suptitle("Embedding Activation", fontsize=46)
-    if save:
-        if not folder_exists(save_folder):
-            folder_create(save_folder)
-        fig_name = f"{save_folder}embedding_trained.png"
-        fig.savefig(fig_name, dpi=300)
-        print(f"saved figure: '{fig_name}'")
-    if show:
-        plt.show()
+    for param in trained_model.parameters():
+        param.requires_grad = False
 
-    plt.close('all')
+    input_attentions = {obj: [] for obj in data.labels}
+    recurrent_attentions = {obj: [] for obj in data.labels}
+    for i in range(n_valid_batches):
+
+        # Take each testing batch and process
+        batch_start = i * half_batch
+        batch_end = i * half_batch + half_batch \
+            if i * half_batch + half_batch < len(data) \
+            else len(data)
+
+        X, y, y_labels = data[valid_indices[batch_start:batch_end]]
+
+        X = X.reshape(-1, 10, 19).to(device)
+        y_labels = y_labels.squeeze()
+
+        true_labels.extend(y_labels.squeeze().tolist())
+
+        # randomly switch in zero rows to vary the number of grasps being identified
+        padded_start = 9  # use 10 grasps
+        X_pad = X[:, :padded_start + 1, :]
+        hidden = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
+
+        X_pad.requires_grad = True
+        hidden.requires_grad = True
+
+        """ iterate through each grasp and run the model """
+        for j in range(0, padded_start + 1):
+            output = trained_model(X_pad[:, j, :], hidden)
+
+            score, _ = torch.max(output, 1)
+            score.backward()
+
+            slc_inputs = torch.abs(X_pad.grad)
+            slc_hidden = torch.abs(hidden.grad)
+
+            slc = (slc - slc.min()) / (slc.max() - slc.min())
+
+            hidden = nn.functional.softmax(output, dim=-1)
+            # calculate accuracy of classification
+            _, preds = output.detach().max(dim=1)
+
+        embedding_trained = trained_model.get_embed().cpu().numpy()
+
+        raw_outputs_trained.extend(output.detach().squeeze().cpu().numpy())
+
+
+        embeddings_trained.extend(embedding_trained.squeeze())
+
+
+    true_labels = np.array(true_labels)
+    all_embeds_trained = np.stack(embeddings_trained)
+    all_outputs_trained = np.stack(raw_outputs_trained)
+
+    lbl_to_cls_dict = data.label_to_cls
+
