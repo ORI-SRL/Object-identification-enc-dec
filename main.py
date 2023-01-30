@@ -89,7 +89,7 @@ if TUNING:
     #                                                      show=True)
 
     """test_tuned_model will return the predicted vs true labels for use in confusion matrix plotting"""
-    grasp_pred_labels = test_tuned_model(model, n_epochs, batch_size, classes, criterion,
+    grasp_pred_labels = test_tuned_model(model, n_epochs, criterion, batch_size, block_sensor,
                                          old_data=(old_train_data, old_valid_data, old_test_data),
                                          new_data=(new_train_data, new_valid_data, new_test_data),
                                          oldnew=JOINT_DATA, show_confusion=False)
