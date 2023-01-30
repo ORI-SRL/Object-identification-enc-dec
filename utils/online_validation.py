@@ -386,13 +386,13 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
         n_valid_batches = int(len(new_valid_data) / half_batch) if valid_batch_reminder == 0 else int(
             len(new_valid_data) / half_batch) + 1
     else:
-        train_batch_reminder = len(old_train_data) % half_batch
-        valid_batch_reminder = len(old_valid_data) % half_batch
+        train_batch_reminder = len(old_train_data) % batch_size
+        valid_batch_reminder = len(old_valid_data) % batch_size
 
-        n_train_batches = int(len(old_train_data) / half_batch) if train_batch_reminder == 0 else int(
-            len(old_train_data) / half_batch) + 1
-        n_valid_batches = int(len(old_valid_data) / half_batch) if valid_batch_reminder == 0 else int(
-            len(old_valid_data) / half_batch) + 1
+        n_train_batches = int(len(old_train_data) / batch_size) if train_batch_reminder == 0 else int(
+            len(old_train_data) / batch_size) + 1
+        n_valid_batches = int(len(old_valid_data) / batch_size) if valid_batch_reminder == 0 else int(
+            len(old_valid_data) / batch_size) + 1
 
     old_train_indices = list(range(len(old_train_data)))
     old_valid_indices = list(range(len(old_valid_data)))
@@ -419,12 +419,13 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
         for i in range(n_train_batches):
 
             # Take each training batch and process
-            batch_start = i * half_batch
             if oldnew:
+                batch_start = i * half_batch
                 batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_train_data) \
                     else len(new_train_data)
             else:
-                batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_train_data) \
+                batch_start = i * batch_size
+                batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(old_train_data) \
                     else len(old_train_data)
 
             X_old, y_old, _ = old_train_data[old_train_indices[batch_start:batch_end]]
@@ -484,12 +485,14 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
         for i in range(n_valid_batches):
 
             # Take each validation batch and process
-            batch_start = i * half_batch
+
             if oldnew:
+                batch_start = i * half_batch
                 batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_valid_data) \
                     else len(new_valid_data)
             else:
-                batch_end = i * half_batch + half_batch if i * half_batch + half_batch < len(new_valid_data) \
+                batch_start = i * batch_size
+                batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(old_train_data) \
                     else len(old_train_data)
 
             X_old, y_old, _ = old_valid_data[old_valid_indices[batch_start:batch_end]]
@@ -575,7 +578,7 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
     return model, best_params, best_loss_dict
 
 
-def test_tuned_model(model, n_epochs, batch_size, criterion, old_data=None, new_data=None, oldnew=False,
+def test_tuned_model(model, n_epochs, criterion, batch_size, blocked_sensor=None, old_data=None, new_data=None, oldnew=False,
                      show_confusion=True):
 
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
@@ -592,13 +595,14 @@ def test_tuned_model(model, n_epochs, batch_size, criterion, old_data=None, new_
     grasp_accuracy = np.zeros((10, 2)).astype(float)  # setup for accuracy at each grasp number
     grasp_accuracy[:, 0] = np.linspace(1, 10, 10)
 
+    obj_accuracy = np.zeros((7, 2)).astype(float)
+
     """Extract data"""
     _, _, old_test_data = old_data
     _, _, new_test_data = new_data
-    """Calculate how many batches there are"""
 
+    """Calculate how many batches there are"""
     half_batch = int(batch_size / 2)
-    test_batch_reminder = len(old_test_data) % half_batch if oldnew else len(new_test_data) % half_batch
     batch_size = batch_size - 1 if batch_size % 2 != 0 else batch_size  # enforce even batch sizes
 
     if oldnew:
@@ -607,10 +611,10 @@ def test_tuned_model(model, n_epochs, batch_size, criterion, old_data=None, new_
         n_test_batches = int(len(new_test_data) / half_batch) if test_batch_reminder == 0 else int(
             len(new_test_data) / half_batch) + 1
     else:
-        test_batch_reminder = len(old_test_data) % half_batch
+        test_batch_reminder = len(old_test_data) % batch_size
 
-        n_test_batches = int(len(old_test_data) / half_batch) if test_batch_reminder == 0 else int(
-            len(old_test_data) / half_batch) + 1
+        n_test_batches = int(len(old_test_data) / batch_size) if test_batch_reminder == 0 else int(
+            len(old_test_data) / batch_size) + 1
 
     old_test_indices = list(range(len(old_test_data)))
     new_test_indices = list(range(len(new_test_data)))
@@ -622,10 +626,17 @@ def test_tuned_model(model, n_epochs, batch_size, criterion, old_data=None, new_
     for i in range(n_test_batches):
 
         # Take each testing batch and process
-        batch_start = i * half_batch
-        batch_end = i * half_batch + half_batch \
-            if i * half_batch + half_batch < len(new_test_data) \
-            else len(new_test_data)
+
+        if oldnew:
+            batch_start = i * half_batch
+            batch_end = i * half_batch + half_batch \
+                if i * half_batch + half_batch < len(new_test_data) \
+                else len(new_test_data)
+        else:
+            batch_start = i * batch_size
+            batch_end = i * batch_size + batch_size \
+                if i * batch_size + batch_size < len(old_test_data) \
+                else len(old_test_data)
 
         X_old, y_old, y_labels_old = old_test_data[old_test_indices[batch_start:batch_end]]
         X_new, y_new, y_labels_new = new_test_data[new_test_indices[batch_start:batch_end]]
@@ -763,7 +774,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                 grasps_taken = 0
 
                 for j in range(X.size(1)):
-                    output, _ = model(X_frame[:, j:j + 1, :], hidden)
+                    output = model(X_frame[:, j:j + 1, :], hidden)
                     probs_out = sm(output)
                     # score_max_index = probs_out.argmax(1)  # class output across batches (dim=batch size)
                     score_max, score_max_index = probs_out.max(dim=1)
