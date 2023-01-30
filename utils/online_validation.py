@@ -359,8 +359,8 @@ def organise_tuning_data(old_data_file, old_labels_file, new_data_file, new_labe
     return sensor_maxima, data_out, labels_out
 
 
-def tune_RNN_network(model, optimizer, criterion, batch_size, old_data=None, new_data=None, n_epochs=50,
-                     max_patience=25, save_folder='./', oldnew=True, save=True, show=True):
+def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=None, old_data=None, new_data=None,
+                     n_epochs=50, max_patience=25, save_folder='./', oldnew=True, save=True, show=True):
     model_name, device, train_loss_out, valid_loss_out, train_acc_out, valid_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
     hidden_size = 7
