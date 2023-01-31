@@ -330,8 +330,8 @@ def test_tuned_model(model, n_epochs, batch_size, criterion, old_data=None, new_
         X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) \
             if oldnew else X_old.reshape(-1, 10, 19).to(device)
 
-        noise = torch.abs(torch.normal(0.0, noise_level, X.shape)).to(device)
-        X += noise
+        # noise = torch.abs(torch.normal(0.0, noise_level, X.shape)).to(device)
+        # X += noise
 
         y = torch.cat([y_old, y_new], dim=0).to(device)if oldnew else y_old.to(device)
         y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_labels_old

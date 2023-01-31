@@ -6,12 +6,13 @@ import csv
 import matplotlib.pyplot as plt
 import copy
 import random
+from tqdm import tqdm
 # from sklearn.metrics import silhouette_score, silhouette_samples
 from utils.simple_io import *
 from sklearn import preprocessing
 from utils import silhouette
 import scipy.io
-from utils.plot_helpers import plot_saliencies, plot_embeddings
+from utils.plot_helpers import plot_saliencies, plot_embeddings, plot_attention_loadings
 
 
 def seed_experiment(seed):
@@ -81,18 +82,6 @@ def plot_model(best_loss, train_loss, valid_loss, train_acc, train_val, type):
 
     return fig
 
-
-def plot_entropies(entropies, labels):
-    fig, ax = plt.subplots(figsize=(9, 6))
-    plt.grid(True)
-
-    for label in labels:
-        plt.plot(entropies[label], label=label, alpha=.8, marker='o')
-
-    ax.set_xlabel('epoch #', fontsize=25)
-    ax.set_ylabel('Embedded Layer Entropy', fontsize=25)
-    ax.legend(loc='upper right', ncol=2, fontsize=18)
-    plt.show()
 
 
 def plot_embed(trained_model, data, batch_size, device='cpu', save_folder='./figures/', show=True, save=False):
@@ -458,64 +447,67 @@ def attention_analysis(trained_model, data, batch_size, device='cpu', save_folde
     random.shuffle(valid_indices)
 
     true_labels = []
-    raw_outputs_trained = []
-    embeddings_trained = []
 
     for param in trained_model.parameters():
         param.requires_grad = False
 
-    input_attentions = {obj: [] for obj in data.labels}
-    recurrent_attentions = {obj: [] for obj in data.labels}
-    for i in range(n_valid_batches):
+    input_attentions = {obj: {i: [] for i in range(n_grasps)} for obj in data.labels}
+    recurrent_attentions = {obj: {i: [] for i in range(n_grasps)} for obj in data.labels}
+    for i in tqdm(range(n_valid_batches)):
 
+        # print(X_pad.grad[:, 0, :][0])
         # Take each testing batch and process
         batch_start = i * half_batch
         batch_end = i * half_batch + half_batch \
             if i * half_batch + half_batch < len(data) \
             else len(data)
 
-        X, y, y_labels = data[valid_indices[batch_start:batch_end]]
+        for j in range(batch_start, batch_end):
+            X, y, y_labels = data[valid_indices[j]]
 
-        X = X.reshape(-1, 10, 19).to(device)
-        y_labels = y_labels.squeeze()
+            X = X.reshape(-1, 10, 19).to(device)
+            y_labels = y_labels.squeeze()
 
-        true_labels.extend(y_labels.squeeze().tolist())
+            true_labels.extend(y_labels.squeeze().tolist())
 
-        # randomly switch in zero rows to vary the number of grasps being identified
-        padded_start = 9  # use 10 grasps
-        X_pad = X[:, :padded_start + 1, :]
-        hidden = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
+            # randomly switch in zero rows to vary the number of grasps being identified
+            for padded_start in range(10):
+                X_pad = X[:, :padded_start + 1, :]
+                hidden = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
 
-        X_pad.requires_grad = True
-        hidden.requires_grad = True
+                X_pad.requires_grad = True
 
-        """ iterate through each grasp and run the model """
-        for j in range(0, padded_start + 1):
-            output = trained_model(X_pad[:, j, :], hidden)
+                """ iterate through each grasp and run the model """
+                for j in range(0, padded_start + 1):
 
-            score, _ = torch.max(output, 1)
-            score.backward()
+                    if j == padded_start:
+                        hidden_last = torch.zeros(hidden.shape).to(device)
+                        hidden_last[:] = hidden.data
+                        hidden_last.requires_grad = True
+                        output = trained_model(X_pad[:, j, :], hidden_last)
+                        break
 
-            slc_inputs = torch.abs(X_pad.grad)
-            slc_hidden = torch.abs(hidden.grad)
+                    output = trained_model(X_pad[:, j, :], hidden)
+                    hidden = nn.functional.softmax(output, dim=-1)
 
-            slc = (slc - slc.min()) / (slc.max() - slc.min())
+                score, _ = torch.max(output, 1)
+                score.backward()
 
-            hidden = nn.functional.softmax(output, dim=-1)
-            # calculate accuracy of classification
-            _, preds = output.detach().max(dim=1)
+                # compute attention loadings
+                slc_inputs = torch.abs(X_pad.grad[0, padded_start, :]*X_pad.grad[0, padded_start, :]).mean()
+                slc_hidden = torch.abs(hidden_last.grad*hidden_last).mean()
+                # slc_min = min(slc_inputs, slc_hidden)
+                # slc_max = max(slc_inputs, slc_hidden)
 
-        embedding_trained = trained_model.get_embed().cpu().numpy()
+                # slc_inputs = (slc_inputs - min(slc_inputs)) / (max(slc_inputs) - min(slc_inputs))
+                # slc_hidden = (slc_hidden - min(slc_hidden)) / (max(slc_hidden) - min(slc_hidden))
 
-        raw_outputs_trained.extend(output.detach().squeeze().cpu().numpy())
+                input_attentions[str(y_labels)][j].append(slc_inputs.item())
+                recurrent_attentions[str(y_labels)][j].append(slc_hidden.item())
+                with torch.no_grad():
+                    trained_model.zero_grad()
 
-
-        embeddings_trained.extend(embedding_trained.squeeze())
-
-
-    true_labels = np.array(true_labels)
-    all_embeds_trained = np.stack(embeddings_trained)
-    all_outputs_trained = np.stack(raw_outputs_trained)
-
-    lbl_to_cls_dict = data.label_to_cls
-
+    plot_attention_loadings(input_attentions, recurrent_attentions,
+                            save_folder=save_folder,
+                            show=show,
+                            save=save)

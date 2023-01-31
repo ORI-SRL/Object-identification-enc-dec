@@ -187,6 +187,19 @@ def plot_saliencies(frame_sal, hidden_sal, frame_std, hidden_std, classes):
     axs['3'].legend()
 
 
+def plot_entropies(entropies, labels):
+    fig, ax = plt.subplots(figsize=(9, 6))
+    plt.grid(True)
+
+    for label in labels:
+        plt.plot(entropies[label], label=label, alpha=.8, marker='o')
+
+    ax.set_xlabel('epoch #', fontsize=25)
+    ax.set_ylabel('Embedded Layer Entropy', fontsize=25)
+    ax.legend(loc='upper right', ncol=2, fontsize=18)
+    plt.show()
+
+
 def plot_embeddings(outputs_trained, outputs_rnd, true_labels, all_embeds_trained, all_embeds_rnd, lbl_to_cls_dict, save_folder, show, save):
 
     objects = sorted(list(lbl_to_cls_dict.keys()))
@@ -222,6 +235,69 @@ def plot_embeddings(outputs_trained, outputs_rnd, true_labels, all_embeds_traine
             folder_create(save_folder)
         fig_name = f"{save_folder}embedding_trained.png"
         fig.savefig(fig_name, dpi=300)
+        print(f"saved figure: '{fig_name}'")
+    if show:
+        plt.show()
+
+    plt.close('all')
+
+
+def plot_attention_loadings(input_attentions, rec_attentions, save_folder='./figures/', show=True, save=False):
+
+    fig, [ax1, ax2] = plt.subplots(1, 2, figsize=(16, 5))
+
+    input_min = []
+    input_max = []
+    rec_min = []
+    rec_max = []
+    for obj in input_attentions.keys():
+        data = np.array([input_attentions[obj][key] for key in input_attentions[obj].keys()])
+        input_min.append(data.min())
+        input_max.append(data.max())
+
+        data = np.array([rec_attentions[obj][key] for key in rec_attentions[obj].keys()])
+        rec_min.append(np.array([lst for lst in rec_attentions[obj]]).min())
+        rec_max.append(np.array([lst for lst in rec_attentions[obj]]).max())
+
+    input_min = min(input_min)
+    input_max = max(input_max)
+    rec_min = min(rec_min)
+    rec_max = max(rec_max)
+
+
+    for obj in input_attentions.keys():
+        obj_input_means = []
+        obj_input_stds = []
+        obj_rec_means = []
+        obj_rec_stds = []
+        for i in range(len(list(input_attentions[obj].keys()))):
+            norm_data = (input_attentions[obj][i] - input_min) / (input_max - input_min)
+            obj_input_means.append(np.mean(norm_data))
+            obj_input_stds.append(np.std(norm_data)/np.sqrt(len(norm_data)))
+
+            norm_data = (rec_attentions[obj][i] - rec_min) / (rec_max - rec_min)
+            obj_rec_means.append(np.mean(norm_data))
+            obj_rec_stds.append(np.std(norm_data)/np.sqrt(len(norm_data)))
+
+        x = list(range(1, len(obj_input_means)+1))
+
+        p = ax1.errorbar(x, obj_input_means, yerr=obj_input_stds, label=f"obj", marker='o', ls='-')
+        ax2.errorbar(x, obj_rec_means, yerr=obj_rec_stds, label=f"obj", marker='d', ls='--', color=p[0].get_color())
+
+    ax1.set_ylabel("Scaled grasp input attention", fontsize=20)
+    ax1.set_xlabel("Grasp #", fontsize=24)
+    ax2.set_ylabel("Scaled recurrent input attention", fontsize=20)
+    ax2.set_xlabel("Grasp #", fontsize=24)
+
+    ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), fancybox=True, shadow=True, ncol=4)
+    ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), fancybox=True, shadow=True, ncol=4)
+
+    # fig.suptitle("Embedding Activation", fontsize=46)
+    if save:
+        if not folder_exists(save_folder):
+            folder_create(save_folder)
+        fig_name = f"{save_folder}attentions.png"
+        fig.savefig(fig_name, dpi=300, bbox_inches='tight')
         print(f"saved figure: '{fig_name}'")
     if show:
         plt.show()

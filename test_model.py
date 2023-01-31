@@ -76,14 +76,14 @@ if TUNING:
 
     # ---------------  OPTIMIZE EMBEDDINGS BY BACKPROP THORUGH INPUTS -----------------------
     # if exist:
-    #     grasp_pred_labels = test_tuned_model(model, n_epochs, batch_size, criterion,
-    #                                          old_data=(old_train_data, old_valid_data, old_test_data),
-    #                                          new_data=(new_train_data, new_valid_data, new_test_data),
-    #                                          oldnew=JOINT_DATA,
-    #                                          noise_level=noise_level,
-    #                                          save_folder=MODEL_SAVE_FOLDER,
-    #                                          show=True,
-    #                                          save=True)
+        # grasp_pred_labels = test_tuned_model(model, n_epochs, batch_size, criterion,
+        #                                      old_data=(old_train_data, old_valid_data, old_test_data),
+        #                                      new_data=(new_train_data, new_valid_data, new_test_data),
+        #                                      oldnew=JOINT_DATA,
+        #                                      noise_level=noise_level,
+        #                                      save_folder=MODEL_SAVE_FOLDER,
+        #                                      show=True,
+        #                                      save=True)
     #     plot_embed(model, old_train_data, batch_size, device=get_device(), show=True, save=False)
     #     plot_embed_optimize(model, model_state, data=old_data, device=get_device(), show=True, save=False)
 
@@ -94,7 +94,7 @@ if TUNING:
                        device=get_device(),
                        save_folder='./figures/',
                        show=True,
-                       save=False)
+                       save=True)
 
 
     # ---------------  OPTIMIZE EMBEDDINGS BY BACKPROP THORUGH EMBED LAYER -----------------------
