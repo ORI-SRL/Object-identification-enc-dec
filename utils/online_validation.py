@@ -742,7 +742,8 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     true_labels = []
     hidden_size = 7
     sm = nn.Softmax(dim=1)
-    cyl_stack = np.zeros((0, 7))
+
+    conf_obj_examine = 6
 
     """Extract data"""
     _, _, old_test_data = old_data
@@ -763,7 +764,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     random.shuffle(old_test_indices)
     random.shuffle(new_test_indices)
 
-    for x in range(10):
+    for x in range(6):
         for i in range(n_test_batches):
             batch_start = i * batch_size
             batch_end = i * batch_size + batch_size \
@@ -783,7 +784,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
             y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_labels_new
 
             for r in range(X.size(0)):
-                cyl_stack = np.zeros((0, 7))
+                obj_stack = np.zeros((0, 7))
                 X_frame = X[r, :, :].reshape((1, 10, -1))
                 true_labels.extend(y_labels.squeeze().tolist())
 
@@ -798,18 +799,18 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                     # score_max_index = probs_out.argmax(1)  # class output across batches (dim=batch size)
                     score_max, score_max_index = probs_out.max(dim=1)
 
-                    hidden = output
+                    hidden = nn.functional.softmax(output, dim=-1)
                     confs[y[r], grasps_taken] += score_max
                     conf_sums[y[r], grasps_taken] += 1
                     conf_std[y[r]][grasps_taken].append(score_max)
 
-                    if y[r] == 5:
-                        cyl_stack = np.append(cyl_stack, probs_out.detach().cpu().numpy() * 100, axis=0)
+                    if y[r] == conf_obj_examine:
+                        obj_stack = np.append(obj_stack, probs_out.detach().cpu().numpy() * 100, axis=0)
                     grasps_taken += 1
                     if score_max > 0.99:
                         break
 
-                last_frame = copy.copy(output)
+                last_frame = probs_out
 
                 # calculate accuracy of classification
                 _, inds = last_frame.max(dim=1)
@@ -819,16 +820,16 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                 grasp_accuracy[grasps_taken - 1, 1] += 1
                 grasp_accuracy[grasps_taken - 1, 0] += frame_accuracy
 
-                if y[r] == 5 and np.size(cyl_stack, 0) > 3:
-                    n_rows = np.size(cyl_stack, 0)
+                if conf_obj_examine == y[r] and np.size(obj_stack, 0) > 6:
+                    n_rows = np.size(obj_stack, 0)
                     # fig, axs = plt.subplots(n_rows, 1)
                     fig, ax = plt.subplots(1, 1)
                     y_shift = 0
                     y_data = []
                     for row in range(n_rows):
                         cyl_list = []
-                        # cyl_stack[row, :] += y_shift
-                        for idx, ent in enumerate(cyl_stack[row, :]):
+                        # obj_stack[row, :] += y_shift
+                        for idx, ent in enumerate(obj_stack[row, :]):
                             temp_list = [idx] * int(np.ceil(ent))
                             cyl_list.extend(temp_list)
                         s = pd.Series(cyl_list)
@@ -846,6 +847,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                         xx = np.linspace(0, 6, len(line))
                         ax.plot(xx, line)
                     ax.set_xlim((-0.25, 6.25))
+                    ax.set_ylim((0, line.max()+0.3))
                     plt.xticks(ticks=range(0, 7), labels=classes)
                     ax.set_yticklabels([])
                     ax.set_yticks([])
@@ -900,6 +902,6 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     plt.show()
     plt.xticks(ticks=x_bar_ticks, labels=x_bar_labels)
     ax_bar.set_ylabel('Belief / %')
-    ax_bar.set_xlabel('Objects')
+    # ax_bar.set_xlabel('Objects')
 
     ax_bar.legend()
