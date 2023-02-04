@@ -46,44 +46,6 @@ def save_params(filename, loss, params):
         w.writerow([key, val])
 
 
-def plot_model(best_loss, train_loss, valid_loss, train_acc, train_val, type):
-    fig, [ax1, ax2] = plt.subplots(1, 2)
-    x = list(range(1, len(valid_loss) + 1))
-    smoothing_level = 5.
-
-    sm_train_loss = pd.DataFrame(train_loss).ewm(com=smoothing_level).mean()
-    p = ax1.plot(x, train_loss, alpha=.2)
-    ax1.plot(x, sm_train_loss.squeeze(), label="Training loss", alpha=.8, color=p[0].get_color())
-
-    sm_valid_loss = pd.DataFrame(valid_loss).ewm(com=smoothing_level).mean()
-    p = ax1.plot(x, valid_loss, alpha=.2)
-    ax1.plot(x, sm_valid_loss.squeeze(), label="Validation loss", alpha=.8, color=p[0].get_color())
-
-    ax1.set_xlabel('epoch #')
-    ax1.set_ylabel('Loss')
-    ax1.legend()
-
-    train_acc = np.array(train_acc) * 100
-    train_val = np.array(train_val) * 100
-
-    sm_train_acc = pd.DataFrame(train_acc).ewm(com=smoothing_level).mean()
-    p = ax2.plot(train_acc, alpha=.2)
-    ax2.plot(sm_train_acc, label=f"Training {type}", alpha=.8, color=p[0].get_color())
-
-    sm_valid_acc = pd.DataFrame(train_val).ewm(com=smoothing_level).mean()
-    p = ax2.plot(train_val, alpha=0.2)
-    ax2.plot(sm_valid_acc, label=f"Validation {type}", alpha=.8, color=p[0].get_color())
-
-    ax2.set_xlabel('epoch #')
-    ax2.set_ylabel('Accuracy (%)')
-    ax2.legend()
-    fig.set_size_inches(12, 4.8)  # size in pixels
-    plt.show()
-
-    return fig
-
-
-
 def plot_embed(trained_model, data, batch_size, device='cpu', save_folder='./figures/', show=True, save=False):
     """Convert data into tensors"""
 

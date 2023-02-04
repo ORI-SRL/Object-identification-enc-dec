@@ -1,12 +1,13 @@
+from matplotlib.gridspec import GridSpec
+from utils.simple_io import *
+from os.path import exists
 # import pickle
 import csv
 import matplotlib.pyplot as plt
 # import os
-from os.path import exists
 import numpy as np
-from utils.simple_io import *
-from matplotlib.gridspec import GridSpec
 import torch
+import pandas as pd
 
 
 def plot_silhouette(file_path, model, n_grasps):
@@ -187,7 +188,7 @@ def plot_saliencies(frame_sal, hidden_sal, frame_std, hidden_std, classes):
     axs['3'].legend()
 
 
-def plot_entropies(entropies, labels):
+def plot_entropies(entropies, labels, save_folder='', show=True, save=False):
     fig, ax = plt.subplots(figsize=(9, 6))
     plt.grid(True)
 
@@ -197,7 +198,15 @@ def plot_entropies(entropies, labels):
     ax.set_xlabel('epoch #', fontsize=25)
     ax.set_ylabel('Embedded Layer Entropy', fontsize=25)
     ax.legend(loc='upper right', ncol=2, fontsize=18)
-    plt.show()
+
+    if save:
+        if not folder_exists(save_folder):
+            folder_create(save_folder)
+        fig_name = f"{save_folder}entropies.png"
+        fig.savefig(fig_name, dpi=300, bbox_inches='tight')
+        print(f"saved figure: '{fig_name}'")
+    if show:
+        plt.show()
 
 
 def plot_embeddings(outputs_trained, outputs_rnd, true_labels, all_embeds_trained, all_embeds_rnd, lbl_to_cls_dict, save_folder, show, save):
@@ -256,14 +265,13 @@ def plot_attention_loadings(input_attentions, rec_attentions, save_folder='./fig
         input_max.append(data.max())
 
         data = np.array([rec_attentions[obj][key] for key in rec_attentions[obj].keys()])
-        rec_min.append(np.array([lst for lst in rec_attentions[obj]]).min())
-        rec_max.append(np.array([lst for lst in rec_attentions[obj]]).max())
+        rec_min.append(data.min())
+        rec_max.append(data.max())
 
     input_min = min(input_min)
     input_max = max(input_max)
     rec_min = min(rec_min)
     rec_max = max(rec_max)
-
 
     for obj in input_attentions.keys():
         obj_input_means = []
@@ -281,13 +289,15 @@ def plot_attention_loadings(input_attentions, rec_attentions, save_folder='./fig
 
         x = list(range(1, len(obj_input_means)+1))
 
-        p = ax1.errorbar(x, obj_input_means, yerr=obj_input_stds, label=f"obj", marker='o', ls='-')
-        ax2.errorbar(x, obj_rec_means, yerr=obj_rec_stds, label=f"obj", marker='d', ls='--', color=p[0].get_color())
+        p = ax1.errorbar(x, obj_input_means, yerr=obj_input_stds, label=f"{obj}", marker='o', ls='-')
+        ax2.errorbar(x, obj_rec_means, yerr=obj_rec_stds, label=f"{obj}", marker='d', ls='--', color=p[0].get_color())
 
     ax1.set_ylabel("Scaled grasp input attention", fontsize=20)
     ax1.set_xlabel("Grasp #", fontsize=24)
+    ax1.set_ylim([0, 1])
     ax2.set_ylabel("Scaled recurrent input attention", fontsize=20)
     ax2.set_xlabel("Grasp #", fontsize=24)
+    ax2.set_ylim([0, 1])
 
     ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), fancybox=True, shadow=True, ncol=4)
     ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), fancybox=True, shadow=True, ncol=4)
@@ -303,3 +313,78 @@ def plot_attention_loadings(input_attentions, rec_attentions, save_folder='./fig
         plt.show()
 
     plt.close('all')
+
+
+def plot_model(best_loss, train_loss, valid_loss, train_acc, train_val, type, save_folder='', show=True, save=False):
+    fig, [ax1, ax2] = plt.subplots(1, 2)
+    x = list(range(1, len(valid_loss) + 1))
+    smoothing_level = 5.
+
+    sm_train_loss = pd.DataFrame(train_loss).ewm(com=smoothing_level).mean()
+    p = ax1.plot(x, train_loss, alpha=.2)
+    ax1.plot(x, sm_train_loss.squeeze(), label="Training loss", alpha=.8, color=p[0].get_color())
+
+    sm_valid_loss = pd.DataFrame(valid_loss).ewm(com=smoothing_level).mean()
+    p = ax1.plot(x, valid_loss, alpha=.2)
+    ax1.plot(x, sm_valid_loss.squeeze(), label="Validation loss", alpha=.8, color=p[0].get_color())
+
+    ax1.set_xlabel('epoch #')
+    ax1.set_ylabel('Loss')
+    ax1.legend()
+
+    train_acc = np.array(train_acc) * 100
+    train_val = np.array(train_val) * 100
+
+    sm_train_acc = pd.DataFrame(train_acc).ewm(com=smoothing_level).mean()
+    p = ax2.plot(train_acc, alpha=.2)
+    ax2.plot(sm_train_acc, label=f"Training {type}", alpha=.8, color=p[0].get_color())
+
+    sm_valid_acc = pd.DataFrame(train_val).ewm(com=smoothing_level).mean()
+    p = ax2.plot(train_val, alpha=0.2)
+    ax2.plot(sm_valid_acc, label=f"Validation {type}", alpha=.8, color=p[0].get_color())
+
+    ax2.set_xlabel('epoch #')
+    ax2.set_ylabel('Accuracy (%)')
+    ax2.legend()
+    fig.set_size_inches(12, 4.8)  # size in pixels
+
+    if save:
+        if not folder_exists(save_folder):
+            folder_create(save_folder)
+        fig_name = f"{save_folder}training_dynamics.png"
+        fig.savefig(fig_name, dpi=300, bbox_inches='tight')
+        print(f"saved figure: '{fig_name}'")
+    if show:
+        plt.show()
+
+    return fig
+
+
+def plot_drop_search(folder, save_folder='./', show=True, save=False):
+
+    with open(f'{folder}results.npy', 'rb') as f:
+        drops = np.load(f)
+        valid_losses = np.load(f)
+        valid_accs = np.load(f)
+
+    fig, ax = plt.subplots()
+    p = ax.plot(drops, valid_losses.squeeze(), label="validation loss", marker='s', ms=9, alpha=.8, color='b')
+    ax.set_xlabel('max. # of sensors dropped', fontsize=22)
+    ax.set_ylabel("loss", color=p[0].get_color(), fontsize=22)
+
+    ax2 = ax.twinx()
+    # make a plot with different y-axis using second axis object
+    p = ax2.plot(drops, valid_accs.squeeze()*100, label="validation accuracy (%)", marker='o', ms=9, alpha=.8, color='r')
+    ax2.set_ylabel("accuracy", color=p[0].get_color(), fontsize=22)
+
+    plt.show()
+    ax.set_ylabel('Loss')
+    ax.legend()
+    if save:
+        if not folder_exists(save_folder):
+            folder_create(save_folder)
+        fig_name = f"{save_folder}sensordrop_search.png"
+        fig.savefig(fig_name, dpi=300, bbox_inches='tight')
+        print(f"saved figure: '{fig_name}'")
+    if show:
+        plt.show()

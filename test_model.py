@@ -54,7 +54,8 @@ def get_model(Model, use_previous=False, save_folder=''):
 
 '''This is where the model can either be tuned and updated, or learnt from scratch with the combined data'''
 if TUNING:
-    PREP_TUNE = True
+
+    plot_drop_search(MODEL_SAVE_FOLDER, save_folder="./figures/", show=True, save=True)
 
     print("Creating 'old' dataset splits...")
     old_data = GraspDataset(x_filename="data/raw_data/base_unshuffled_original_data.npy",
@@ -75,26 +76,24 @@ if TUNING:
                                                       save_folder=MODEL_SAVE_FOLDER)
 
     # ---------------  OPTIMIZE EMBEDDINGS BY BACKPROP THORUGH INPUTS -----------------------
-    # if exist:
-        # grasp_pred_labels = test_tuned_model(model, n_epochs, batch_size, criterion,
-        #                                      old_data=(old_train_data, old_valid_data, old_test_data),
-        #                                      new_data=(new_train_data, new_valid_data, new_test_data),
-        #                                      oldnew=JOINT_DATA,
-        #                                      noise_level=noise_level,
-        #                                      save_folder=MODEL_SAVE_FOLDER,
-        #                                      show=True,
-        #                                      save=True)
-    #     plot_embed(model, old_train_data, batch_size, device=get_device(), show=True, save=False)
-    #     plot_embed_optimize(model, model_state, data=old_data, device=get_device(), show=True, save=False)
+    if exist:
+        grasp_pred_labels = test_tuned_model(model, n_epochs, batch_size, criterion,
+                                             old_data=(old_train_data, old_valid_data, old_test_data),
+                                             new_data=(new_train_data, new_valid_data, new_test_data),
+                                             oldnew=JOINT_DATA,
+                                             noise_level=noise_level,
+                                             save_folder=MODEL_SAVE_FOLDER,
+                                             show=True,
+                                             save=True)
 
 
-    # ---------------  CHECK INFORMATIONA LOADINGS -----------------------
+        # ---------------  CHECK INFORMATIONA LOADINGS -----------------------
 
-    attention_analysis(model, old_test_data, batch_size,
-                       device=get_device(),
-                       save_folder='./figures/',
-                       show=True,
-                       save=True)
+        attention_analysis(model, old_test_data, batch_size,
+                           device=get_device(),
+                           save_folder='./figures/',
+                           show=True,
+                           save=True)
 
 
     # ---------------  OPTIMIZE EMBEDDINGS BY BACKPROP THORUGH EMBED LAYER -----------------------

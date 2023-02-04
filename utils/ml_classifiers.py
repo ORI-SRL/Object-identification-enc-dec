@@ -159,25 +159,25 @@ def compare_classifiers(classifiers, names, train_data, train_labels, test_data,
     return most_acc, score
 
 
-def plot_confusion(data, labels, model_fit, n_grasps, iter=False):
-    unique_labels = sorted(list(set(labels)))
-    if iter:
-        pred_labels = data
-    else:
-        pred_labels = model_fit.predict(data)
-    cm = confusion_matrix(labels, pred_labels, labels=unique_labels)
+def plot_confusion(predictions, true_labels, unique_labels, title, save_folder='', show=True, save=False):
+    cm = confusion_matrix(true_labels, predictions, labels=unique_labels)
     # cm_display = ConfusionMatrixDisplay(cm, display_labels=unique_labels).plot()
     cm = cm.astype('float64')
     for row in range(len(unique_labels)):
-        cm[row, :] = cm[row, :] / labels.count(unique_labels[row])
+        cm[row, :] = cm[row, :] / cm[row, :].sum()
     fig = plt.figure()
-    plt.title(f'{n_grasps} grasps - {model_fit.__class__.__name__}')
+    plt.title(title)
     fig.set_size_inches(8, 5)
     sns.set(font_scale=1.2)
-    cm_display_percentages = sns.heatmap(cm, annot=True, fmt='.1%', cmap='Blues', xticklabels=unique_labels,
+    cm_display_percentages = sns.heatmap(cm, annot=True, fmt='.1%', cmap='Blues',
+                                         xticklabels=unique_labels,
                                          yticklabels=unique_labels, vmin=0, vmax=1).plot()
-    # / (len(labels) / len(unique_labels)
 
-    plt.show()
+    if show:
+        plt.show()
+
+    if save:
+        fig_name = f"{save_folder}{title}.png"
+        fig.savefig(fig_name, dpi=300)
 
 

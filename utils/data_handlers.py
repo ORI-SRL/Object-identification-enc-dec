@@ -170,7 +170,7 @@ class GraspDataset(Dataset):
     def get_indeces_by_label(self):
         return self.label_indeces
 
-    def get_splits(self, train_ratio, valid_ratio):
+    def get_splits(self, train_ratio, valid_ratio, five_fold=False):
         # the function splits this dataset into three datasets according to the ratios
         train_indices = []
         valid_indices = []
@@ -203,6 +203,47 @@ class GraspDataset(Dataset):
         print('Testing data: {} datapoints'.format(int(len(test_dataset))))
 
         return train_dataset, valid_dataset, test_dataset
+
+    def get_fold_splits(self, k=5):
+        train_ratio = 1 - 1/k
+        # the function splits this dataset into three datasets according to the ratios
+
+        fold_train_indices = {i:[] for i in range(k)}
+        fold_valid_indices = {i:[] for i in range(k)}
+        for object_label in self.labels:
+            object_indeces = self.label_indeces[object_label].tolist()
+            random.shuffle(object_indeces)
+
+            num_train = round(len(object_indeces) * train_ratio)
+            num_valid = len(object_indeces) - num_train
+            start = 0
+            end = num_valid
+            for fold in range(k):
+                # split data indices in train, valid and test (not the actual data, just the indeces)
+                fold_train_indices[fold] += object_indeces[:start] + object_indeces[end:]
+                fold_valid_indices[fold] += object_indeces[start:end]
+
+                # print(f"fold valid: {object_indeces[start:end]} | fold train: {object_indeces[:start] + object_indeces[end:]}")
+                start = (start + num_valid) % len(object_indeces)
+                end = end + num_valid
+
+        for fold in range(k):
+            random.shuffle(fold_train_indices[fold])
+            random.shuffle(fold_valid_indices[fold])
+
+        fold_data = {}
+        for fold in range(k):
+            train_dataset = copy.deepcopy(self)
+            train_dataset.set_subset(fold_train_indices[fold])
+            print('Training data: {} datapoints'.format(int(len(train_dataset))))
+
+            valid_dataset = copy.deepcopy(self)
+            valid_dataset.set_subset(fold_valid_indices[fold])
+            print('Training data: {} datapoints'.format(int(len(valid_dataset))))
+
+            fold_data[fold] = {'train': train_dataset, 'valid': train_dataset}
+
+        return fold_data
 
     def get_labels(self, clss):
         labels = []
