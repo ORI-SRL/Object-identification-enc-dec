@@ -585,8 +585,8 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
     return model, best_params, best_loss_dict
 
 
-def test_tuned_model(model, n_epochs, criterion, batch_size, blocked_sensor=None, old_data=None, new_data=None, oldnew=False,
-                     show_confusion=True):
+def test_tuned_model(model, n_epochs, criterion, batch_size, blocked_sensor=None, old_data=None, new_data=None,
+                     oldnew=False, show_confusion=True):
 
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)

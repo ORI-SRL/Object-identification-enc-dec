@@ -78,7 +78,7 @@ if TUNING:
             model.load_state_dict(torch.load(model_state))
     optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
     criterion = nn.CrossEntropyLoss()
-    block_sensor = [14,15,16,17]  # [9, 10, 11]
+    block_sensor = None  # [9, 10, 11]
     # model, batch_params, batch_losses = tune_RNN_network(model, optimizer, criterion, batch_size, block_sensor,
     #                                                      n_epochs=n_epochs,
     #                                                      old_data=(old_train_data, old_valid_data, old_test_data),
