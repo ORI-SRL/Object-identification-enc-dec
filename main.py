@@ -16,7 +16,6 @@ from utils.networks import *
 from utils.loss_plotting import *
 from utils.online_validation import *
 
-
 DATA_PATH = os.path.abspath(os.getcwd())
 DATA_FOLDER = "./data/validation_data_523/"
 MODEL_SAVE_FOLDER = './saved_model_states/iterative/shifted/'
@@ -36,7 +35,7 @@ seed_experiment(SEED)
 classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 # Prepare data loaders
 batch_size = 32
-n_epochs = 1000
+n_epochs = 1500
 plt.rcParams.update({'font.size': 18})
 
 TRAIN_MODEL = False
@@ -48,7 +47,7 @@ ITERATIVE = True
 RNN = True
 ONLINE_VALIDATION = False
 TUNING = True
-
+FOLDS = 5
 
 '''This is where the model can either be tuned and updated, or learnt from scratch with the combined data'''
 if TUNING:
@@ -59,14 +58,19 @@ if TUNING:
                             y_filename="data/raw_data/base_unshuffled_original_labels.npy")
     old_train_data, old_valid_data, old_test_data = old_data.get_splits(train_ratio=train_ratio,
                                                                         valid_ratio=valid_ratio)
+    old_data_folds = old_data.get_fold_splits(k=5)
 
     print("Creating 'new' dataset splits...")
     new_data = GraspDataset(x_filename="data/raw_data/base_unshuffled_tuning_data.npy",
                             y_filename="data/raw_data/base_unshuffled_tuning_labels.npy")
     new_train_data, new_valid_data, new_test_data = new_data.get_splits(train_ratio=train_ratio,
                                                                         valid_ratio=valid_ratio)
-
+    new_data_folds = new_data.get_fold_splits(k=5)
     print("Datasets ready!")
+
+    valid_accs = {i: [] for i in range(10)}
+    predictions = {i: [] for i in range(10)}
+    true_labels = {i: [] for i in range(10)}
 
     model = models[0]()
     model_name = model.__class__.__name__
@@ -76,19 +80,30 @@ if TUNING:
         model_state = f'{MODEL_SAVE_FOLDER}{model.__class__.__name__}_dropout_model_state.pt'
         if exists(model_state):
             model.load_state_dict(torch.load(model_state))
-    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     criterion = nn.CrossEntropyLoss()
-    block_sensor = None  # [9, 10, 11]
-    # model, batch_params, batch_losses = tune_RNN_network(model, optimizer, criterion, batch_size, block_sensor,
-    #                                                      n_epochs=n_epochs,
-    #                                                      old_data=(old_train_data, old_valid_data, old_test_data),
-    #                                                      new_data=(new_train_data, new_valid_data, new_test_data),
-    #                                                      max_patience=75,
-    #                                                      save_folder=MODEL_SAVE_FOLDER,
-    #                                                      oldnew=JOINT_DATA,
-    #                                                      save=True,
-    #                                                      show=True)
-    #
+    block_sensor = 1  # [9, 10, 11]
+
+    for k in range(FOLDS):
+        seed_experiment(SEED)
+        model, batch_params, batch_kpis = tune_RNN_network(model, optimizer, criterion, batch_size, block_sensor,
+                                                           n_epochs=n_epochs,
+                                                           old_data=(old_data_folds[k]['train'], old_data_folds[k]['valid'], None),
+                                                           new_data=(new_data_folds[k]['train'], new_data_folds[k]['valid'], None),
+                                                           max_patience=75,
+                                                           save_folder=MODEL_SAVE_FOLDER,
+                                                           oldnew=JOINT_DATA,
+                                                           save=True,
+                                                           show=False)
+        for grasp in range(10):
+            valid_accs[grasp].append(batch_kpis['grasp_accuracies'][grasp])
+            predictions[grasp].extend(batch_kpis['predictions'][grasp])
+            true_labels[grasp].extend(batch_kpis['true_labels'][grasp])
+
+    print("5-fold valid_accuracy")
+    for grasp in range(10):
+        print(f"{grasp + 1} grasp(s): {np.array(valid_accs[grasp]).mean() * 100:.5f}%")
+
     """test_tuned_model will return the predicted vs true labels for use in confusion matrix plotting"""
     grasp_pred_labels = test_tuned_model(model, n_epochs, criterion, batch_size, block_sensor,
                                          old_data=(old_train_data, old_valid_data, old_test_data),
