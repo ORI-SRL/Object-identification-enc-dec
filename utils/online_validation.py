@@ -444,18 +444,27 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
 
             """Allocate a sensor to be blocked in retraining"""
             if blocked_sensor is not None:
-                X[:, :, blocked_sensor] = 0
+                # X[:, :, blocked_sensor] = 0
+                drop = blocked_sensor  # np.random.randint(blocked_sensor)
+                X[:, :, random.sample(range(X.shape[-1]), k=drop)] = 0.
 
+            # randomly pick a number of grasps to train
             padded_ints = list(range(n_grasps))
             random.shuffle(padded_ints)
+
+            # randomly pick a grasp order
+            grasps_order = list(range(n_grasps))
+            random.shuffle(grasps_order)
 
             model.train()
             for k in range(n_grasps):
                 frame_loss = 0
 
                 # randomly switch in zero rows to vary the number of grasps being identified
+                random.shuffle(grasps_order)
+
                 padded_start = padded_ints[k]  # np.random.randint(1, 11)
-                X_pad = X[:, :padded_start + 1, :]
+                X_pad = X[:, grasps_order[:padded_start + 1], :]
 
                 # set hidden layer
                 hidden = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
@@ -483,6 +492,10 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
         train_loss_out.append(train_loss)
         train_acc_out.append(train_accuracy)
 
+        grasp_accuracies = {i: 0. for i in range(n_grasps)}  # setup for accuracy at each grasp number
+        grasp_predictions = {i: [] for i in range(n_grasps)}
+        grasp_true_labels = {i: [] for i in range(n_grasps)}
+
         accuracies = np.zeros(n_grasps).astype(float)  # setup for accuracy at each grasp number
 
         model.eval()
@@ -499,8 +512,8 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
                 batch_end = i * batch_size + batch_size if i * batch_size + batch_size < len(old_train_data) \
                     else len(old_train_data)
 
-            X_old, y_old, _ = old_valid_data[old_valid_indices[batch_start:batch_end]]
-            X_new, y_new, _ = new_valid_data[new_valid_indices[batch_start:batch_end]]
+            X_old, y_old, y_labels_old = old_valid_data[old_valid_indices[batch_start:batch_end]]
+            X_new, y_new, y_labels_new = new_valid_data[new_valid_indices[batch_start:batch_end]]
 
             X_cat = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) if oldnew else \
                 X_old.reshape(-1, 10, 19).to(device)
@@ -508,13 +521,26 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
             # X_cat += noise
             # X_cat[X_cat < 1] = 0
             y_cat = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_old.to(device)
+            y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_labels_old
+
             batch_ints = list(range(len(y_cat)))
             random.shuffle(batch_ints)
             X = X_cat[batch_ints, :, :]
             y = y_cat[batch_ints]
 
+            y_labels = y_labels[batch_ints]
+
+            all_no_of_grasps = list(range(n_grasps))
+            random.shuffle(all_no_of_grasps)
+
+            # randomly pick a grasp order
+            grasps_order = list(range(n_grasps))
+            random.shuffle(grasps_order)
+
             if blocked_sensor is not None:
-                X[:, :, blocked_sensor] = 0
+                # X[:, :, blocked_sensor] = 0
+                drop = blocked_sensor  # np.random.randint(blocked_sensor)
+                X[:, :, random.sample(range(X.shape[-1]), k=drop)] = 0.
 
             padded_ints = list(range(n_grasps))
             random.shuffle(padded_ints)
@@ -522,8 +548,10 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
             for k in range(n_grasps):
 
                 # randomly switch in zero rows to vary the number of grasps being identified
+                random.shuffle(grasps_order)
+
                 padded_start = padded_ints[k]  # np.random.randint(1, 11)
-                X_pad = X[:, :padded_start + 1, :]
+                X_pad = X[:, grasps_order[:padded_start + 1], :]
 
                 # set the first hidden layer as a vanilla prediction or zeros
                 hidden = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
@@ -540,10 +568,13 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
                 frame_accuracy = torch.sum(preds == y.flatten()).cpu().numpy() / len(preds)
                 valid_accuracy += frame_accuracy
                 accuracies[padded_start] += frame_accuracy
+                grasp_accuracies[padded_start] += frame_accuracy
+                grasp_predictions[padded_start].extend(old_train_data.get_labels(preds.cpu().numpy()))
+                grasp_true_labels[padded_start].extend(y_labels.flatten().tolist())
 
         # calculate the testing accuracy and losses and divide by the number of batches
         valid_accuracy = valid_accuracy / (n_valid_batches * n_grasps)
-        accuracies = accuracies / n_valid_batches
+        for i in range(n_grasps): accuracies[i] /= n_valid_batches
         valid_loss = valid_loss.detach().cpu() / (n_valid_batches * n_grasps)
         valid_loss_out.append(valid_loss)
         valid_acc_out.append(valid_accuracy)
@@ -559,8 +590,14 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
 
         if best_loss_dict['valid_loss'] is None or valid_loss < best_loss_dict['valid_loss']:
             best_params = copy.copy(model.state_dict())
-            best_loss_dict = {'train_loss': train_loss, 'valid_loss': valid_loss, 'train_acc': train_accuracy,
-                              'valid_acc': valid_accuracy, 'epoch': epoch}
+            best_loss_dict = {'train_loss': train_loss,
+                              'valid_loss': valid_loss,
+                              'train_acc': train_accuracy,
+                              'valid_acc': valid_accuracy,
+                              'grasp_accuracies': grasp_accuracies,
+                              'predictions': grasp_predictions,
+                              'true_labels': grasp_true_labels,
+                              'epoch': epoch, }
             patience = 0
 
             grasp_accuracy[:, 1] = accuracies
@@ -574,7 +611,7 @@ def tune_RNN_network(model, optimizer, criterion, batch_size, blocked_sensor=Non
             break
 
     if save and best_params is not None:
-        model_file = f'{save_folder}{model_name}_dropout'
+        model_file = f'{save_folder}{model_name}_dropout_sens_drop'
         save_params(model_file, best_loss_dict, best_params)
 
     if show:
@@ -627,83 +664,91 @@ def test_tuned_model(model, n_epochs, criterion, batch_size, blocked_sensor=None
     new_test_indices = list(range(len(new_test_data)))
 
     model.eval()
-    random.shuffle(old_test_indices)
-    random.shuffle(new_test_indices)
+    for _ in range(5):
+        random.shuffle(old_test_indices)
+        random.shuffle(new_test_indices)
 
-    for i in range(n_test_batches):
+        for i in range(n_test_batches):
 
-        # Take each testing batch and process
+            # Take each testing batch and process
 
-        if oldnew:
-            batch_start = i * half_batch
-            batch_end = i * half_batch + half_batch \
-                if i * half_batch + half_batch < len(new_test_data) \
-                else len(new_test_data)
-        else:
-            batch_start = i * batch_size
-            batch_end = i * batch_size + batch_size \
-                if i * batch_size + batch_size < len(old_test_data) \
-                else len(old_test_data)
+            if oldnew:
+                batch_start = i * half_batch
+                batch_end = i * half_batch + half_batch \
+                    if i * half_batch + half_batch < len(new_test_data) \
+                    else len(new_test_data)
+            else:
+                batch_start = i * batch_size
+                batch_end = i * batch_size + batch_size \
+                    if i * batch_size + batch_size < len(old_test_data) \
+                    else len(old_test_data)
 
-        X_old, y_old, y_labels_old = old_test_data[old_test_indices[batch_start:batch_end]]
-        X_new, y_new, y_labels_new = new_test_data[new_test_indices[batch_start:batch_end]]
+            X_old, y_old, y_labels_old = old_test_data[old_test_indices[batch_start:batch_end]]
+            X_new, y_new, y_labels_new = new_test_data[new_test_indices[batch_start:batch_end]]
 
-        X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) \
-            if oldnew else X_old.reshape(-1, 10, 19).to(device)
-        # X[X < 1] = 0
-        y = torch.cat([y_old, y_new], dim=0).to(device)if oldnew else y_old.to(device)
-        y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_old
+            X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) \
+                if oldnew else X_old.reshape(-1, 10, 19).to(device)
+            # X[X < 1] = 0
+            y = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_old.to(device)
+            y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_labels_old
 
-        if blocked_sensor is not None:
-            X[:, :, blocked_sensor] = 0
-        true_labels.extend(y_labels.squeeze().tolist())
+            # randomly pick a grasp order
+            grasps_order = list(range(n_grasps))
+            random.shuffle(grasps_order)
 
-        padded_ints = list(range(n_grasps))
-        random.shuffle(padded_ints)
+            if blocked_sensor is not None:
+                # X[:, :, blocked_sensor] = 0
+                drop = blocked_sensor  # np.random.randint(blocked_sensor)
+                X[:, :, random.sample(range(X.shape[-1]), k=drop)] = 0.
+            true_labels.extend(y_labels.squeeze().tolist())
 
-        for k in range(n_grasps):
-            # randomly switch in zero rows to vary the number of grasps being identified
-            padded_start = padded_ints[k]  # np.random.randint(1, 11)
-            X_pad = X[:, :padded_start + 1, :]
+            padded_ints = list(range(n_grasps))
+            random.shuffle(padded_ints)
 
-            # set hidden layer
-            hidden = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
+            for k in range(n_grasps):
+                # randomly switch the number and order of rows to vary the grasps being identified
+                random.shuffle(grasps_order)
 
-            """ iterate through each grasp and run the model """
-            output = model(X_pad[:, 0, :], hidden)
-            hidden = nn.functional.softmax(output, dim=-1)
-            for j in range(1, padded_start + 1):
-                output = model(X_pad[:, j, :], hidden)
+                padded_start = padded_ints[k]  # np.random.randint(1, 11)
+                X_pad = X[:, grasps_order[:padded_start + 1], :]
+
+                # set hidden layer
+                hidden = torch.full((X_pad.size(0), hidden_size), 1 / hidden_size).to(device)
+
+                """ iterate through each grasp and run the model """
+                output = model(X_pad[:, 0, :], hidden)
                 hidden = nn.functional.softmax(output, dim=-1)
+                for j in range(1, padded_start + 1):
+                    output = model(X_pad[:, j, :], hidden)
+                    hidden = nn.functional.softmax(output, dim=-1)
 
-            loss2 = criterion(output, y.squeeze())
-            test_loss += loss2.item()
+                loss2 = criterion(output, y.squeeze())
+                test_loss += loss2.item()
 
-            # calculate accuracy of classification
-            _, preds = output.detach().max(dim=1)
-            frame_accuracy = torch.sum(preds == y.flatten()).cpu().numpy() / len(preds)
+                # calculate accuracy of classification
+                _, preds = output.detach().max(dim=1)
+                frame_accuracy = torch.sum(preds == y.flatten()).cpu().numpy() / len(preds)
 
-            test_accuracy += frame_accuracy
-            grasp_accuracy[padded_start, 1] += frame_accuracy
-            for idx, ob in enumerate(y.flatten()):
-                if preds[idx] == ob:
-                    obj_accuracy[ob, 1] += 1
-                obj_accuracy[ob, 0] += 1
+                test_accuracy += frame_accuracy
+                grasp_accuracy[padded_start, 1] += frame_accuracy
+                for idx, ob in enumerate(y.flatten()):
+                    if preds[idx] == ob:
+                        obj_accuracy[ob, 1] += 1
+                    obj_accuracy[ob, 0] += 1
 
-
-            # add the prediction and true to the grasp_labels dict
-            pred_labels_tmp = old_test_data.get_labels(preds.cpu().numpy())
-            pred_labels.extend(pred_labels_tmp)
-            grasp_pred_labels[str(padded_start+1)].extend(pred_labels_tmp)
+                # add the prediction and true to the grasp_labels dict
+                pred_labels_tmp = old_test_data.get_labels(preds.cpu().numpy())
+                pred_labels.extend(pred_labels_tmp)
+                grasp_pred_labels[str(padded_start + 1)].extend(pred_labels_tmp)
 
     test_accuracy = test_accuracy / (n_epochs * n_grasps)
     test_loss = test_loss / (n_epochs * n_grasps)
     test_loss_out.append(test_loss)
     test_acc_out.append(test_accuracy)
 
-    grasp_accuracy[:, 1] = grasp_accuracy[:, 1] / n_test_batches
-    print(f'Grasp accuracy: {grasp_accuracy}')
-    print(f'Average accuracy = {np.mean(grasp_accuracy[:, 1])}')
+    grasp_accuracy[:, 1] = grasp_accuracy[:, 1] / n_test_batches / 5
+    print(f'Grasp accuracy: \n{grasp_accuracy}')
+    print(f'Average accuracy = \n{np.mean(grasp_accuracy[:, 1])}')
 
     obj_accuracy[:, 1] = obj_accuracy[:, 1] / obj_accuracy[:, 0]
     print(f'Object accuracy: {obj_accuracy}')
@@ -711,13 +756,13 @@ def test_tuned_model(model, n_epochs, criterion, batch_size, blocked_sensor=None
     if show_confusion:
         for grasp_no in range(n_grasps):
             unique_labels = new_test_data.labels
-            cm = confusion_matrix(true_labels, grasp_pred_labels[str(grasp_no+1)], labels=unique_labels)
+            cm = confusion_matrix(true_labels, grasp_pred_labels[str(grasp_no + 1)], labels=unique_labels)
             # cm_display = ConfusionMatrixDisplay(cm, display_labels=unique_labels).plot()
             cm = cm.astype('float64')
             for row in range(len(unique_labels)):
                 cm[row, :] = cm[row, :] / cm[row, :].sum()
             fig = plt.figure()
-            plt.title(f'{grasp_no+1} grasps - {model.__class__.__name__}')
+            plt.title(f'{grasp_no + 1} grasps - {model.__class__.__name__}')
             fig.set_size_inches(8, 5)
             sns.set(font_scale=1.2)
             cm_display_percentages = sns.heatmap(cm, annot=True, fmt='.1%', cmap='Blues',
@@ -730,7 +775,7 @@ def test_tuned_model(model, n_epochs, criterion, batch_size, blocked_sensor=None
 
 
 def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, old_data=None, new_data=None,
-                              oldnew=True):
+                              oldnew=True, n_grasps=10):
     model_name, device, train_loss_out, test_loss_out, train_acc_out, test_acc_out, patience, best_loss_dict, \
         best_params = model_init(model)
     test_accuracy = 0
@@ -764,7 +809,9 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
     random.shuffle(old_test_indices)
     random.shuffle(new_test_indices)
 
-    for x in range(6):
+    for x in range(10):
+        random.shuffle(old_test_indices)
+        random.shuffle(new_test_indices)
         for i in range(n_test_batches):
             batch_start = i * batch_size
             batch_end = i * batch_size + batch_size \
@@ -777,15 +824,22 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
             X = torch.cat([X_old.reshape(-1, 10, 19), X_new.reshape(-1, 10, 19)], dim=0).to(device) if oldnew else \
                 X_new.reshape(-1, 10, 19).to(device)
             """Vary the noise to find a balance between perfect results and more realistic variation"""
-            noise = torch.normal(0, 0.25, X.shape).to(device) * X
+            noise = 0  # torch.normal(0, 0.01, X.shape).to(device)
             X += noise
-            X[X < 1] = 0
+            # X[X < 1] = 0
             y = torch.cat([y_old, y_new], dim=0).to(device) if oldnew else y_new.to(device)
             y_labels = np.concatenate([y_labels_old, y_labels_new]) if oldnew else y_labels_new
 
+            all_no_of_grasps = list(range(n_grasps))
+            random.shuffle(all_no_of_grasps)
+
+            # randomly pick a grasp order
+            grasps_order = list(range(n_grasps))
+            random.shuffle(grasps_order)
+
             for r in range(X.size(0)):
                 obj_stack = np.zeros((0, 7))
-                X_frame = X[r, :, :].reshape((1, 10, -1))
+                X_frame = X[r, grasps_order, :].reshape((1, 10, -1))
                 true_labels.extend(y_labels.squeeze().tolist())
 
                 # run the model and calculate loss
@@ -820,7 +874,7 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                 grasp_accuracy[grasps_taken - 1, 1] += 1
                 grasp_accuracy[grasps_taken - 1, 0] += frame_accuracy
 
-                if conf_obj_examine == y[r] and np.size(obj_stack, 0) > 6:
+                if conf_obj_examine == y[r] and np.size(obj_stack, 0) > 1:
                     n_rows = np.size(obj_stack, 0)
                     # fig, axs = plt.subplots(n_rows, 1)
                     fig, ax = plt.subplots(1, 1)
@@ -841,18 +895,18 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
                                 res.append(idx)
                         y_line = ax.get_lines()[row].get_ydata()[res] + y_shift
                         y_data.append(y_line)
-                        y_shift = max(y_line)+0.3
+                        y_shift = max(y_line) + 0.3
                     fig, ax = plt.subplots(1, 1)
                     for line in y_data:
                         xx = np.linspace(0, 6, len(line))
                         ax.plot(xx, line)
                     ax.set_xlim((-0.25, 6.25))
-                    ax.set_ylim((0, line.max()+0.3))
+                    ax.set_ylim((0, line.max() + 0.3))
                     plt.xticks(ticks=range(0, 7), labels=classes)
                     ax.set_yticklabels([])
                     ax.set_yticks([])
-                    fig.text(0.1, 0.5, 'Belief Distribution', va='center', rotation='vertical')
-                    fig.set_size_inches((10.5, 9))
+                    fig.text(0.085, 0.5, 'Belief Distribution', va='center', rotation='vertical')
+                    fig.set_size_inches((9, 6))
                     # plt.show()
 
     grasp_accuracy[:, 0] = grasp_accuracy[:, 0] / grasp_accuracy[:, 1]
@@ -896,12 +950,15 @@ def online_grasp_w_early_stop(model, n_epochs, batch_size, classes, criterion, o
         x_bar_labels.extend([_ + 1 for _ in x_plt])
         # x_bar = [row + _ for _ in x_tix]
         # ax.plot(x_plt, y_plt, '-', label=f'{class_name}')
-        ax_bar.plot(x_bar, y_plt, linewidth=4, color=color_cycle[row]) if len(x_plt) > 1 else \
+        ax_bar.plot(x_bar, y_plt, linewidth=3, color=color_cycle[row]) if len(x_plt) > 1 else \
             ax_bar.scatter(x_bar, y_plt, marker='x', linewidth=3, color=color_cycle[row])  # label=f'{class_name}'
         ax_bar.bar(x_bar, y_plt, width=0.15, alpha=0.3, label=classes[row], color=color_cycle[row])
+    conf_99 = np.array([[-0.5, 99], [np.max(x_bar) + 0.5, 99]])
+    ax_bar.plot(conf_99[:, 0], conf_99[:, 1], 'k--', alpha=0.3)
     plt.show()
     plt.xticks(ticks=x_bar_ticks, labels=x_bar_labels)
     ax_bar.set_ylabel('Belief / %')
+    ax_bar.set_xlim((-0.5, np.max(x_bar) + 0.5))
     # ax_bar.set_xlabel('Objects')
-
+    fig_bar.set_size_inches((8, 4))
     ax_bar.legend()
