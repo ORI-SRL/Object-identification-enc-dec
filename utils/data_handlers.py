@@ -127,14 +127,22 @@ class ObjectGraspsDataset(Dataset):
 
 class GraspDataset(Dataset):
 
-    def __init__(self, x_filename, y_filename, normalize=False, subset_indices=None):
+    def __init__(self, x_filename, y_filename, normalize=False, minmax=True, subset_indices=None):
 
         # load datasets
         self.X = torch.FloatTensor(np.load(x_filename).reshape(-1, 190))
         self.y_labels = np.load(y_filename).reshape(-1, 1)
 
         if normalize:
-            self.X = (self.X - self.X.mean(dim=0))/self.X.std(dim=0)
+            self.std = self.X.reshape((-1, 19)).std(dim=0)
+            self.mean = self.X.reshape((-1, 19)).mean(dim=0)
+            self.X_original = copy.deepcopy(self.X)
+            self.X = ((self.X.reshape((-1, 19)) - self.mean)/self.std).reshape((-1, 190))
+        elif minmax:
+            self.max = self.X.reshape((-1, 19)).max(dim=0).values
+            self.min = self.X.reshape((-1, 19)).min(dim=0).values
+            self.X_original = copy.deepcopy(self.X)
+            self.X = (self.X - self.min.repeat(10))/(self.max.repeat(10) - self.min.repeat(10))
 
         self.labels = np.unique(self.y_labels)
         self.label_to_cls = dict()
@@ -162,7 +170,7 @@ class GraspDataset(Dataset):
     def get_indeces_by_label(self):
         return self.label_indeces
 
-    def get_splits(self, train_ratio, valid_ratio):
+    def get_splits(self, train_ratio, valid_ratio, five_fold=False):
         # the function splits this dataset into three datasets according to the ratios
         train_indices = []
         valid_indices = []
@@ -196,6 +204,47 @@ class GraspDataset(Dataset):
 
         return train_dataset, valid_dataset, test_dataset
 
+    def get_fold_splits(self, k=5):
+        train_ratio = 1 - 1/k
+        # the function splits this dataset into three datasets according to the ratios
+
+        fold_train_indices = {i:[] for i in range(k)}
+        fold_valid_indices = {i:[] for i in range(k)}
+        for object_label in self.labels:
+            object_indeces = self.label_indeces[object_label].tolist()
+            random.shuffle(object_indeces)
+
+            num_train = round(len(object_indeces) * train_ratio)
+            num_valid = len(object_indeces) - num_train
+            start = 0
+            end = num_valid
+            for fold in range(k):
+                # split data indices in train, valid and test (not the actual data, just the indeces)
+                fold_train_indices[fold] += object_indeces[:start] + object_indeces[end:]
+                fold_valid_indices[fold] += object_indeces[start:end]
+
+                # print(f"fold valid: {object_indeces[start:end]} | fold train: {object_indeces[:start] + object_indeces[end:]}")
+                start = (start + num_valid) % len(object_indeces)
+                end = end + num_valid
+
+        for fold in range(k):
+            random.shuffle(fold_train_indices[fold])
+            random.shuffle(fold_valid_indices[fold])
+
+        fold_data = {}
+        for fold in range(k):
+            train_dataset = copy.deepcopy(self)
+            train_dataset.set_subset(fold_train_indices[fold])
+            print('Training data: {} datapoints'.format(int(len(train_dataset))))
+
+            valid_dataset = copy.deepcopy(self)
+            valid_dataset.set_subset(fold_valid_indices[fold])
+            print('Training data: {} datapoints'.format(int(len(valid_dataset))))
+
+            fold_data[fold] = {'train': train_dataset, 'valid': train_dataset}
+
+        return fold_data
+
     def get_labels(self, clss):
         labels = []
 
@@ -211,3 +260,4 @@ class GraspDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.X[self.indices[idx]], self.y[self.indices[idx]], self.y_labels[self.indices[idx]]
+
