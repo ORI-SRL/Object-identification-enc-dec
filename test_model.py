@@ -89,11 +89,11 @@ if TUNING:
 
         # ---------------  CHECK INFORMATIONA LOADINGS -----------------------
 
-        attention_analysis(model, old_test_data, batch_size,
-                           device=get_device(),
-                           save_folder='./figures/',
-                           show=True,
-                           save=True)
+        # attention_analysis(model, old_test_data, batch_size,
+        #                    device=get_device(),
+        #                    save_folder='./figures/',
+        #                    show=True,
+        #                    save=True)
 
 
     # ---------------  OPTIMIZE EMBEDDINGS BY BACKPROP THORUGH EMBED LAYER -----------------------

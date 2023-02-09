@@ -148,6 +148,8 @@ class IterativeRNN3(nn.Module):  # this takes in the previous prediction to info
 
 class IterativeRNN4(nn.Module):  # this takes in the previous prediction to inform the next layer
 
+    embed_states = []
+
     def __init__(self):
         super(IterativeRNN4, self).__init__()
 
@@ -162,7 +164,10 @@ class IterativeRNN4(nn.Module):  # this takes in the previous prediction to info
                               nn.BatchNorm2d(16),
                               nn.Dropout(p=.1),
                               nn.ReLU())
+        self.embed_layers = [self.lin1, self.cnn1_block]
+
         self.lin2 = nn.Linear(263, 32)
+
         self.linOut = nn.Linear(32, 7)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
@@ -171,6 +176,22 @@ class IterativeRNN4(nn.Module):  # this takes in the previous prediction to info
         self.embed = None
 
         self.softmax = nn.Softmax(dim=-1)
+
+    def save_embed_states(self):
+        self.embed_states = []
+        for layer in self.embed_layers:
+            self.embed_states.append(layer.state_dict())
+
+    def freeze_embed(self):
+        for layer in self.embed_layers:
+            for param in layer.parameters():
+                param.requires_grad = False
+
+    def _reset_embed_state(self):
+        assert len(self.embed_states) > 0, "please save the states before resetting them"
+        for layer, layer_state in zip(self.embed_layers, self.embed_states):
+            layer.load_state_dict(layer_state)
+        self.freeze_embed()
 
     def get_embed(self):
         return self.embed
@@ -237,326 +258,3 @@ class IterativeRNN4_embed(nn.Module):  # this takes in the previous prediction t
 
         return output  # , pred_back, saliency
 
-
-class IterativeCNN(nn.Module):
-
-    def __init__(self):
-        super(IterativeCNN, self).__init__()
-        self.fwd = nn.Sequential(
-            nn.Conv1d(1, 32, 19, padding=0),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(256, 7),
-            nn.Dropout1d(0.15),
-            nn.Tanh(),
-        )
-        self.conv1 = nn.Conv1d(1, 32, 19, padding=0)
-        self.conv2 = nn.Conv1d(32, 16, 9, padding=0)
-        self.flatten = nn.Flatten()
-        self.fc = nn.Linear(256, 7)
-        self.drop = nn.Dropout1d(0.15)
-        self.relu = nn.ReLU()
-        self.tanh = nn.Tanh()
-        self.sig = nn.Sigmoid()
-        self.softmax = nn.Softmax(dim=-1)
-
-    def forward(self, x, pred_in):
-        next_pred = pred_in
-        output = torch.empty((x.size(0), 0, 7)).to('cuda:0')
-        final = torch.zeros(x.size(0), 1, 7)
-
-        row = x.reshape(x.size(0), 1, x.size(-1))
-        arr = torch.cat((row, next_pred.reshape(x.size(0), 1, 7)), dim=-1)
-        final = self.fwd(arr)  # h1 = self.conv1(arr)
-        next_pred = self.softmax(final)
-        output = torch.cat((output, final.reshape(x.size(0), 1, 7)), dim=1)
-        return final, output
-
-
-class TwoLayerConv(nn.Module):
-
-    def __init__(self):
-        super(TwoLayerConv, self).__init__()
-
-        # Encoder
-        self.encoder_conv = nn.Sequential(
-            nn.Conv2d(1, 32, (1, 19), padding=0),
-            nn.ReLU(),
-            nn.Conv2d(32, 16, (5, 1), padding=0),
-            nn.ReLU(),
-            nn.Conv2d(16, 8, (3, 1), padding=0),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-        # Embedding
-        x = self.encoder_conv(torch.zeros((1, 1, 10, 19)))
-        self.encoder_ff = nn.Sequential(nn.Linear(x.shape[-1], 100),
-                                        nn.Tanh(),
-                                        nn.Linear(100, 3))  # luca: squeeze the bottleneck to two/three neurons
-
-        # Decoder
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1, 32, (10, 1)),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 64, (1, 8)),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 1, (1, 10)),
-        )
-
-    def forward(self, x):
-        x_enc = self.encoder_conv(x)
-        x_enc = self.encoder_ff(x_enc)  # here x_enc is the encoded two-dimensional vector and can be investigated
-
-        x_dec = self.decoder(x_enc.unsqueeze(1).unsqueeze(1))
-
-        return x_dec, x_enc
-
-
-class TwoLayerWDropout(nn.Module):
-
-    def __init__(self):
-        super(TwoLayerWDropout, self).__init__()
-
-        # Encoder
-        self.encoder_conv = nn.Sequential(
-            nn.Conv2d(1, 32, (1, 19), padding=0),
-            nn.Dropout2d(.15),
-            nn.ReLU(),
-            nn.Conv2d(32, 16, (5, 1), padding=0),
-            nn.Dropout2d(.15),
-            nn.ReLU(),
-            nn.Conv2d(16, 8, (3, 1), padding=0),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-        # Embedding
-        x = self.encoder_conv(torch.zeros((1, 1, 10, 19)))
-        self.encoder_ff = nn.Sequential(nn.Linear(x.shape[-1], 100),
-                                        nn.Tanh(),
-                                        nn.Linear(100, 3))  # luca: squeeze the bottleneck to two neurons
-
-        # Decoder
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1, 32, (10, 2)),
-            nn.Dropout2d(.2),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 64, (1, 7)),
-            nn.Dropout2d(.2),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 1, (1, 10)),
-        )
-
-    def forward(self, x):
-        x_enc = self.encoder_conv(x)
-        x_enc = self.encoder_ff(x_enc)  # here x_enc is the encoded two-dimensional vector and can be investigated
-
-        x_dec = self.decoder(x_enc.unsqueeze(1).unsqueeze(1))
-
-        return x_dec, x_enc
-
-
-class TwoLayerWBatchNorm(nn.Module):
-
-    def __init__(self):
-        super(TwoLayerWBatchNorm, self).__init__()
-
-        # Encoder
-        self.encoder_conv = nn.Sequential(
-            nn.Conv2d(1, 32, (1, 19), padding=0),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.Conv2d(32, 16, (5, 1), padding=0),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.Conv2d(16, 8, (3, 1), padding=0),
-            nn.BatchNorm2d(8),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-        # Embedding
-        x = self.encoder_conv(torch.zeros((1, 1, 10, 19)))
-        self.encoder_ff = nn.Sequential(nn.Linear(x.shape[-1], 100),
-                                        nn.Tanh(),
-                                        nn.Linear(100, 3))  # luca: squeeze the bottleneck to two neurons
-
-        # Decoder
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1, 32, (10, 2)),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 64, (1, 7)),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 1, (1, 10)),
-        )
-
-    def forward(self, x):
-        x_enc = self.encoder_conv(x)
-        x_enc = self.encoder_ff(x_enc)  # here x_enc is the encoded two-dimensional vector and can be investigated
-
-        x_dec = self.decoder(x_enc.unsqueeze(1).unsqueeze(1))
-
-        return x_dec, x_enc
-
-
-class TwoLayerWDropoutWBatchNorm(nn.Module):
-
-    def __init__(self):
-        super(TwoLayerWDropoutWBatchNorm, self).__init__()
-
-        # Encoder
-        self.encoder_conv = nn.Sequential(
-            nn.Conv2d(1, 32, (1, 19), padding=0),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.Dropout2d(.15),
-            nn.Conv2d(32, 16, (5, 1), padding=0),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.Dropout2d(.15),
-            nn.Conv2d(16, 8, (3, 1), padding=0),
-            nn.BatchNorm2d(8),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-        # Embedding
-        x = self.encoder_conv(torch.zeros((1, 1, 10, 19)))
-        self.encoder_ff = nn.Sequential(nn.Linear(x.shape[-1], 100),
-                                        nn.Tanh(),
-                                        nn.Linear(100, 3))  # luca: squeeze the bottleneck to two neurons
-
-        # Decoder
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1, 32, (10, 2)),
-            nn.Dropout2d(.2),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 64, (1, 7)),
-            nn.Dropout2d(.2),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 1, (1, 10)),
-        )
-
-    def forward(self, x):
-        x_enc = self.encoder_conv(x)
-        x_enc = self.encoder_ff(x_enc)  # here x_enc is the encoded two-dimensional vector and can be investigated
-
-        x_dec = self.decoder(x_enc.unsqueeze(1).unsqueeze(1))
-
-        return x_dec, x_enc
-
-
-class TwoLayerConv7Grasp(nn.Module):
-
-    def __init__(self):
-        super(TwoLayerConv7Grasp, self).__init__()
-
-        # Encoder
-        self.encoder_conv = nn.Sequential(
-            nn.Conv2d(1, 32, (1, 19), padding=0),
-            nn.ReLU(),
-            nn.Conv2d(32, 16, (4, 1), padding=0),
-            nn.ReLU(),
-            nn.Conv2d(16, 8, (3, 1), padding=0),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-        # Embedding
-        x = self.encoder_conv(torch.zeros((1, 1, 7, 19)))
-        self.encoder_ff = nn.Sequential(nn.Linear(x.shape[-1], 100),
-                                        nn.Tanh(),
-                                        nn.Linear(100, 3))  # luca: squeeze the bottleneck to two/three neurons
-
-        # Decoder
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1, 32, (7, 1)),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 64, (1, 8)),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 1, (1, 10)),
-        )
-
-    def forward(self, x):
-        x_enc = self.encoder_conv(x)
-        x_enc = self.encoder_ff(x_enc)  # here x_enc is the encoded three-dimensional vector and can be investigated
-
-        x_dec = self.decoder(x_enc.unsqueeze(1).unsqueeze(1))
-
-        return x_dec, x_enc
-
-
-class TwoLayerConv5Grasp(nn.Module):
-
-    def __init__(self):
-        super(TwoLayerConv5Grasp, self).__init__()
-
-        # Encoder
-        self.encoder_conv = nn.Sequential(
-            nn.Conv2d(1, 32, (1, 19), padding=0),
-            nn.ReLU(),
-            nn.Conv2d(32, 16, (3, 1), padding=0),
-            nn.ReLU(),
-            nn.Conv2d(16, 8, (2, 1), padding=0),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-        # Embedding
-        x = self.encoder_conv(torch.zeros((1, 1, 5, 19)))
-        self.encoder_ff = nn.Sequential(nn.Linear(x.shape[-1], 100),
-                                        nn.Tanh(),
-                                        nn.Linear(100, 3))  # luca: squeeze the bottleneck to two/three neurons
-
-        # Decoder
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1, 32, (5, 1)),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 64, (1, 8)),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 1, (1, 10)),
-        )
-
-    def forward(self, x):
-        x_enc = self.encoder_conv(x)
-        x_enc = self.encoder_ff(x_enc)  # here x_enc is the encoded two-dimensional vector and can be investigated
-
-        x_dec = self.decoder(x_enc.unsqueeze(1).unsqueeze(1))
-
-        return x_dec, x_enc
-
-
-class TwoLayerConv3Grasp(nn.Module):
-
-    def __init__(self):
-        super(TwoLayerConv3Grasp, self).__init__()
-
-        # Encoder
-        self.encoder_conv = nn.Sequential(
-            nn.Conv2d(1, 32, (1, 19), padding=0),
-            nn.ReLU(),
-            # nn.Conv2d(32, 16, (5, 1), padding=0),
-            # nn.ReLU(),
-            nn.Conv2d(32, 8, (2, 1), padding=0),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-        # Embedding
-        x = self.encoder_conv(torch.zeros((1, 1, 3, 19)))
-        self.encoder_ff = nn.Sequential(nn.Linear(x.shape[-1], 100),
-                                        nn.Tanh(),
-                                        nn.Linear(100, 3))  # luca: squeeze the bottleneck to two/three neurons
-
-        # Decoder
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(1, 32, (3, 1)),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 64, (1, 8)),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 1, (1, 10)),
-        )
-
-    def forward(self, x):
-        x_enc = self.encoder_conv(x)
-        x_enc = self.encoder_ff(x_enc)  # here x_enc is the encoded two-dimensional vector and can be investigated
-
-        x_dec = self.decoder(x_enc.unsqueeze(1).unsqueeze(1))
-
-        return x_dec, x_enc

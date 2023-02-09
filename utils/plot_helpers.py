@@ -204,7 +204,7 @@ def plot_entropies(entropies, labels, save_folder='', show=True, save=False):
             folder_create(save_folder)
         fig_name = f"{save_folder}entropies.png"
         fig.savefig(fig_name, dpi=300, bbox_inches='tight')
-        print(f"saved figure: '{fig_name}'")
+        print(f"best_no_drops figure: '{fig_name}'")
     if show:
         plt.show()
 
@@ -244,7 +244,7 @@ def plot_embeddings(outputs_trained, outputs_rnd, true_labels, all_embeds_traine
             folder_create(save_folder)
         fig_name = f"{save_folder}embedding_trained.png"
         fig.savefig(fig_name, dpi=300)
-        print(f"saved figure: '{fig_name}'")
+        print(f"best_no_drops figure: '{fig_name}'")
     if show:
         plt.show()
 
@@ -308,7 +308,7 @@ def plot_attention_loadings(input_attentions, rec_attentions, save_folder='./fig
             folder_create(save_folder)
         fig_name = f"{save_folder}attentions.png"
         fig.savefig(fig_name, dpi=300, bbox_inches='tight')
-        print(f"saved figure: '{fig_name}'")
+        print(f"best_no_drops figure: '{fig_name}'")
     if show:
         plt.show()
 
@@ -353,7 +353,7 @@ def plot_model(best_loss, train_loss, valid_loss, train_acc, train_val, type, sa
             folder_create(save_folder)
         fig_name = f"{save_folder}training_dynamics.png"
         fig.savefig(fig_name, dpi=300, bbox_inches='tight')
-        print(f"saved figure: '{fig_name}'")
+        print(f"best_no_drops figure: '{fig_name}'")
     if show:
         plt.show()
 
@@ -385,6 +385,42 @@ def plot_drop_search(folder, save_folder='./', show=True, save=False):
             folder_create(save_folder)
         fig_name = f"{save_folder}sensordrop_search.png"
         fig.savefig(fig_name, dpi=300, bbox_inches='tight')
-        print(f"saved figure: '{fig_name}'")
+        print(f"best_no_drops figure: '{fig_name}'")
     if show:
         plt.show()
+
+
+def plot_finetune_comparison(valid_losses, valid_accs, keys, save_folder='', show=True, save=False):
+    fig, [ax1, ax2] = plt.subplots(1, 2)
+    smoothing_level = 5.
+
+    for i, key in enumerate(keys):
+        x = list(range(1, len(valid_losses[i]) + 1))
+        sm_train_loss = pd.DataFrame(valid_losses[i]).ewm(com=smoothing_level).mean()
+        p = ax1.plot(x, valid_losses[i], alpha=.2)
+        ax1.plot(x, sm_train_loss.squeeze(), label=f"{key}", alpha=.8, color=p[0].get_color())
+
+        valid_accs[i] = np.array(valid_accs[i])*100
+        sm_train_acc = pd.DataFrame(valid_accs[i]).ewm(com=smoothing_level).mean()
+        p = ax2.plot(valid_accs[i], alpha=.2)
+        ax2.plot(sm_train_acc, label=f"{key}", alpha=.8, color=p[0].get_color())
+
+    ax1.set_xlabel('epoch #')
+    ax1.set_ylabel('Loss')
+    ax1.legend()
+
+    ax2.set_xlabel('epoch #')
+    ax2.set_ylabel('Accuracy (%)')
+    ax2.legend()
+
+    fig.set_size_inches(12, 4.8)  # size in pixels
+
+    if save:
+        if not folder_exists(save_folder):
+            folder_create(save_folder)
+        fig_name = f"{save_folder}training_dynamics_finetune.png"
+        fig.savefig(fig_name, dpi=300, bbox_inches='tight')
+    if show:
+        plt.show()
+
+    return fig

@@ -26,15 +26,15 @@ n_grasps = [10]  # , 7, 5, 3, 1]
 loss_comparison_dict = {}
 sil_comparison_dict = {}
 ml_dict = {}
-train_ratio, valid_ratio = .6, .2  # test will be the remaining .2
+train_ratio, valid_ratio = .8, .2  # test will be the remaining .2
 
 SEED = 1234
 classes = ['apple', 'bottle', 'cards', 'cube', 'cup', 'cylinder', 'sponge']
 batch_size = 32
 n_epochs = 1500
-patience = 30
+patience = 100
 noise_level = .00
-drops = 0
+drops = 3
 
 TRAIN_MODEL = True
 TEST_MODEL = False

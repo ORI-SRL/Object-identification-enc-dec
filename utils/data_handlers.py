@@ -41,8 +41,8 @@ class ObjectGraspsDataset(Dataset):
                  train: bool = True, pre_sort=False, random_pad=True):
         """
         Args:
-            array_file (string): Path to the saved ndarray file with grasp raw data.
-            labels_file (string): Path to the saved ndarray file with labels.
+            array_file (string): Path to the best_no_drops ndarray file with grasp raw data.
+            labels_file (string): Path to the best_no_drops ndarray file with labels.
             n_grasps (int): number of grasps to be trained on for data reshuffle
         """
 
@@ -160,7 +160,8 @@ class GraspDataset(Dataset):
         self.indices = subset_indices if subset_indices is not None else np.array(list(range(len(self.X))))
 
     def set_subset(self, indeces):
-        assert max(indeces) < len(self.X), "incorrect subset found, index larger than dataset"
+        if len(indeces) > 0:
+            assert max(indeces) < len(self.X), "incorrect subset found, index larger than dataset"
         self.indices = np.array(indeces)
         return True
 

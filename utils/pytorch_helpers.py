@@ -284,7 +284,7 @@ def plot_embed_optimize_direct(model_trained, model_state_trained, data, device=
     model_trained.eval()
     model_rnd.eval()
 
-    search_space = 100
+    search_space = 1000
     objects = sorted(list(cls_dict.keys()))
     hidden_size = len(objects)
 
